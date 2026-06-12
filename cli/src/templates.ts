@@ -30,7 +30,7 @@ export const starterHtml = (site: string): string => `<!doctype html>
  */
 export const agentsMd = (site: string): string => `# ${site} — a Brisk site
 
-This folder is a static site deployed with [Brisk](https://github.com/your-org/brisk).
+This folder is a static site deployed with [Brisk](https://github.com/tomperi/brisk).
 Plain HTML/CSS/JS — no framework, no build step. Deploy with \`brisk deploy\`.
 
 ## The zero-config backend
