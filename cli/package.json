@@ -2,6 +2,9 @@
   "name": "@brisk/cli",
   "version": "0.1.0",
   "description": "The brisk CLI: init, deploy, dev, list, open, pull.",
+  "engines": {
+    "node": ">=20.12"
+  },
   "license": "MIT",
   "type": "module",
   "bin": {

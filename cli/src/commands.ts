@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { api, loadConfig, serverUrl } from './config.js';
+import { api, authHeaders, loadConfig, serverUrl } from './config.js';
 import { agentsMd, briskJson, starterHtml } from './templates.js';
 import { bold, cyan, dim, green, humanBytes, timeAgo, yellow } from './ui.js';
 
@@ -24,8 +24,11 @@ const SKIP = new Set(['.git', 'node_modules', '.DS_Store', 'brisk.json']);
 
 function resolveSite(dir: string, flags: Flags): string {
   const site = flags.site ?? loadConfig(dir).site ?? path.basename(path.resolve(dir));
-  return site.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+  return slugify(site);
 }
+
+/** Folder names become site names: lowercase dns labels, nothing fancier. */
+const slugify = (name: string): string => name.toLowerCase().replace(/[^a-z0-9-]/g, '-');
 
 async function collectFiles(dir: string): Promise<{ rel: string; abs: string }[]> {
   const out: { rel: string; abs: string }[] = [];
@@ -43,7 +46,7 @@ async function collectFiles(dir: string): Promise<{ rel: string; abs: string }[]
 
 export async function init(name: string | undefined, flags: Flags): Promise<void> {
   const dir = name ? path.resolve(name) : process.cwd();
-  const site = (name ?? path.basename(dir)).toLowerCase().replace(/[^a-z0-9-]/g, '-');
+  const site = slugify(name ?? path.basename(dir));
   await fsp.mkdir(dir, { recursive: true });
 
   const write = async (file: string, content: string) => {
@@ -81,7 +84,7 @@ export async function deploy(dirArg: string | undefined, flags: Flags): Promise<
   const started = Date.now();
   const info = await api<SiteInfo>(server, `/api/deploy/${site}`, { method: 'POST', body: form });
   console.log(
-    `${green('✓')} ${bold(site)} ${dim(`· ${info.files} files · ${humanBytes(info.bytes)} · ${Date.now() - started}ms`)}`,
+    `${green('✓')} ${bold(site)} ${dim(`· ${info.files} ${info.files === 1 ? 'file' : 'files'} · ${humanBytes(info.bytes)} · ${Date.now() - started}ms`)}`,
   );
   console.log(`  ${cyan(info.url)}`);
   return info;
@@ -95,20 +98,31 @@ export async function dev(dirArg: string | undefined, flags: Flags): Promise<voi
 
   let timer: NodeJS.Timeout | null = null;
   let deploying = false;
+  let dirty = false;
+
+  const redeploy = async (): Promise<void> => {
+    if (deploying) {
+      dirty = true; // a save landed mid-deploy; go again when this one ends
+      return;
+    }
+    deploying = true;
+    try {
+      await deploy(dirArg, flags);
+    } catch (err) {
+      console.error(yellow(`deploy failed: ${(err as Error).message}`));
+    } finally {
+      deploying = false;
+      if (dirty) {
+        dirty = false;
+        void redeploy();
+      }
+    }
+  };
+
   fs.watch(dir, { recursive: true }, (_event, file) => {
     if (!file || file.split(path.sep).some((part) => SKIP.has(part))) return;
     if (timer) clearTimeout(timer);
-    timer = setTimeout(async () => {
-      if (deploying) return;
-      deploying = true;
-      try {
-        await deploy(dirArg, flags);
-      } catch (err) {
-        console.error(yellow(`deploy failed: ${(err as Error).message}`));
-      } finally {
-        deploying = false;
-      }
-    }, 300);
+    timer = setTimeout(redeploy, 300);
   });
   await new Promise(() => {}); // run until interrupted
 }
@@ -136,9 +150,14 @@ export async function open(siteArg: string | undefined, flags: Flags): Promise<v
   const server = serverUrl(flags.server, loadConfig(dir));
   const info = await api<SiteInfo>(server, `/api/sites/${site}`);
   console.log(cyan(info.url));
-  const opener =
-    process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
-  spawn(opener, [info.url], { stdio: 'ignore', detached: true }).unref();
+  // `start` is a cmd builtin; the empty title argument keeps URLs with & intact.
+  const [cmd, args]: [string, string[]] =
+    process.platform === 'darwin'
+      ? ['open', [info.url]]
+      : process.platform === 'win32'
+        ? ['cmd', ['/c', 'start', '', info.url]]
+        : ['xdg-open', [info.url]];
+  spawn(cmd, args, { stdio: 'ignore', detached: true }).unref();
 }
 
 /** Download a site's source — every site on Brisk is remixable. */
@@ -152,7 +171,9 @@ export async function pull(site: string, dirArg: string | undefined, flags: Flag
   if (!files.length) throw new Error(`no such site: ${site}`);
 
   for (const file of files) {
-    const res = await fetch(`${server}/api/sites/${site}/raw/${file.path}`);
+    const res = await fetch(`${server}/api/sites/${site}/raw/${file.path}`, {
+      headers: authHeaders(),
+    });
     if (!res.ok) throw new Error(`failed to fetch ${file.path}: ${res.status}`);
     const target = path.join(dir, file.path);
     if (!target.startsWith(dir + path.sep) && target !== dir) continue;
