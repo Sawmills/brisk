@@ -84,6 +84,29 @@ async function tokenMatches(presented: string, expected: string): Promise<boolea
   return a.every((byte, i) => byte === b[i]);
 }
 
+/**
+ * The OAuth guest list: exact emails (`ALLOWED_EMAILS`) and/or whole domains
+ * (`ALLOWED_EMAIL_DOMAINS`), comma-separated, case-insensitive. Either list
+ * admits; both empty admits anyone Google authenticates. Use exact emails for
+ * personal instances — allowing `gmail.com` allows the world.
+ */
+export function isAllowedEmail(
+  email: string,
+  env: { ALLOWED_EMAILS: string; ALLOWED_EMAIL_DOMAINS: string },
+): boolean {
+  const list = (csv: string) =>
+    csv
+      .toLowerCase()
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  const emails = list(env.ALLOWED_EMAILS);
+  const domains = list(env.ALLOWED_EMAIL_DOMAINS);
+  if (!emails.length && !domains.length) return true;
+  const lower = email.toLowerCase();
+  return emails.includes(lower) || domains.includes(lower.split('@')[1] ?? '');
+}
+
 const utf8ToB64 = (s: string): string => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
 const b64ToUtf8 = (s: string): string =>
   new TextDecoder().decode(Uint8Array.from(atob(s), (ch) => ch.charCodeAt(0)));
@@ -236,11 +259,7 @@ export function authRoutes(): Hono<AppEnv> {
       picture?: string;
     };
 
-    const allowed = c.env.ALLOWED_EMAIL_DOMAINS.split(',')
-      .map((d) => d.trim())
-      .filter(Boolean);
-    const domain = claims.email.split('@')[1] ?? '';
-    if (allowed.length && !allowed.includes(domain)) {
+    if (!isAllowedEmail(claims.email, c.env)) {
       return c.text(`Sorry, ${claims.email} isn't allowed on this Brisk instance.`, 403);
     }
 

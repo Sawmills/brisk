@@ -8,8 +8,12 @@ export interface Env {
   BASE_HOST: string;
   /** "google" = Google OAuth on the apex domain; "none" = trusted network. */
   AUTH: 'none' | 'google';
-  /** Comma-separated email domains allowed through OAuth. Empty = allow all. */
+  /**
+   * Who gets through OAuth: comma-separated email domains and/or exact
+   * emails. Both empty = allow anyone who can complete the Google login.
+   */
   ALLOWED_EMAIL_DOMAINS: string;
+  ALLOWED_EMAILS: string;
 
   SESSION_SECRET?: string;
   GOOGLE_CLIENT_ID?: string;

@@ -129,8 +129,11 @@ npx wrangler secret put SESSION_SECRET     # any long random string
 npx wrangler secret put DEPLOY_TOKEN       # token the CLI will use
 ```
 
-3. In `wrangler.jsonc` set `"AUTH": "google"` and, to restrict who gets in,
-   `"ALLOWED_EMAIL_DOMAINS": "yourco.com"`.
+3. In `wrangler.jsonc` set `"AUTH": "google"` and restrict who gets in:
+   `"ALLOWED_EMAIL_DOMAINS": "yourco.com"` for a company, or
+   `"ALLOWED_EMAILS": "you@gmail.com"` for a personal instance (never
+   allowlist all of `gmail.com`). Either list admits; both empty admits
+   anyone with a Google account.
 
 Browsers get redirected to Google. The CLI logs in as a real person:
 

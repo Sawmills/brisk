@@ -1,6 +1,7 @@
 import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
+import { isAllowedEmail } from '../src/auth';
 
 const app = createApp();
 
@@ -65,6 +66,31 @@ describe('auth=google', () => {
       headers: { authorization: 'Bearer ci-token' },
     });
     expect(badPort.status).toBe(400);
+  });
+});
+
+describe('the OAuth guest list', () => {
+  const gate =
+    (ALLOWED_EMAILS: string, ALLOWED_EMAIL_DOMAINS = '') =>
+    (email: string) =>
+      isAllowedEmail(email, { ALLOWED_EMAILS, ALLOWED_EMAIL_DOMAINS });
+
+  it('admits everyone when both lists are empty', () => {
+    expect(gate('')('anyone@anywhere.com')).toBe(true);
+  });
+
+  it('limits to exact emails, case-insensitively', () => {
+    const allowed = gate('tom@gmail.com, jane@yourco.com');
+    expect(allowed('Tom@Gmail.com')).toBe(true);
+    expect(allowed('jane@yourco.com')).toBe(true);
+    expect(allowed('someone-else@gmail.com')).toBe(false);
+  });
+
+  it('either list admits when both are set', () => {
+    const allowed = gate('contractor@gmail.com', 'yourco.com');
+    expect(allowed('anyone@yourco.com')).toBe(true);
+    expect(allowed('contractor@gmail.com')).toBe(true);
+    expect(allowed('stranger@gmail.com')).toBe(false);
   });
 });
 

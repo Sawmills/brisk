@@ -41,8 +41,11 @@
     // "google" turns on Google OAuth for the whole platform (see README).
     // "none" gives every visitor a dev identity — fine on a trusted network.
     "AUTH": "none",
-    // Comma-separated email domains allowed through Google OAuth, e.g. "yourco.com".
-    "ALLOWED_EMAIL_DOMAINS": ""
+    // Who gets through Google OAuth (comma-separated, either list admits):
+    // whole domains, e.g. "yourco.com" — or exact emails for personal
+    // instances, e.g. "you@gmail.com" (never allow all of "gmail.com").
+    "ALLOWED_EMAIL_DOMAINS": "",
+    "ALLOWED_EMAILS": ""
   }
 
   // Secrets (set with `wrangler secret put <NAME>`):
