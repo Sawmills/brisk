@@ -1,6 +1,6 @@
 import { SELF } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { siteFromHost } from '../src/app';
+import { siteFromHost, siteUrl } from '../src/app';
 import { isValidSiteName } from '../src/sites';
 
 const HOST = 'http://localhost';
@@ -30,6 +30,35 @@ describe('host routing', () => {
     expect(siteFromHost('a.b.brisk.example.com', 'brisk.example.com')).toBeNull();
     expect(siteFromHost('foo.localhost:8787', '')).toBe('foo');
     expect(siteFromHost('localhost:8787', '')).toBeNull();
+  });
+
+  it('keeps *.localhost working even when BASE_HOST points at production', () => {
+    expect(siteFromHost('palette.localhost:8787', 'brisk.example.com')).toBe('palette');
+    expect(siteFromHost('localhost:8787', 'brisk.example.com')).toBeNull();
+  });
+});
+
+describe('site urls', () => {
+  const conn = (reqUrl: string, BASE_HOST: string) =>
+    siteUrl({ env: { BASE_HOST } as never, req: { url: reqUrl } }, 'foo');
+
+  it('uses subdomain form only when reached via BASE_HOST', () => {
+    expect(conn('https://brisk.example.com/api/sites', 'brisk.example.com')).toBe(
+      'https://foo.brisk.example.com/',
+    );
+    expect(conn('https://bar.brisk.example.com/x', 'brisk.example.com')).toBe(
+      'https://foo.brisk.example.com/',
+    );
+  });
+
+  it('falls back to path form on any other host (local dev, workers.dev)', () => {
+    expect(conn('http://localhost:8787/api/sites', 'brisk.example.com')).toBe(
+      'http://localhost:8787/s/foo/',
+    );
+    expect(conn('https://brisk.acme.workers.dev/api/sites', 'brisk.example.com')).toBe(
+      'https://brisk.acme.workers.dev/s/foo/',
+    );
+    expect(conn('http://localhost:8787/api/sites', '')).toBe('http://localhost:8787/s/foo/');
   });
 });
 

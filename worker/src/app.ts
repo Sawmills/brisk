@@ -25,20 +25,34 @@ function formFiles(body: Record<string, unknown>): File[] {
   return (Array.isArray(raw) ? raw : [raw]).filter((f): f is File => f instanceof File);
 }
 
-/** `foo.brisk.example.com` → `foo`. Also supports `foo.localhost` in dev. */
+/**
+ * `foo.brisk.example.com` → `foo`. `foo.localhost` always works too, whatever
+ * BASE_HOST says — local dev shouldn't depend on production config.
+ */
 export function siteFromHost(host: string, baseHost: string): string | null {
   const bare = host.split(':')[0]!.toLowerCase();
-  const base = (baseHost.split(':')[0] || 'localhost').toLowerCase();
-  if (bare === base) return null;
-  if (!bare.endsWith(`.${base}`)) return null;
-  const label = bare.slice(0, -(base.length + 1));
-  return label.includes('.') ? null : label;
+  const bases = [...new Set([baseHost.split(':')[0]!.toLowerCase(), 'localhost'])].filter(Boolean);
+  for (const base of bases) {
+    if (bare === base) return null;
+    if (bare.endsWith(`.${base}`)) {
+      const label = bare.slice(0, -(base.length + 1));
+      return label.includes('.') ? null : label;
+    }
+  }
+  return null;
 }
 
-function siteUrl(c: { env: Env; req: { url: string } }, site: string): string {
+/**
+ * Site URLs adapt to however the requester reached the instance: subdomain
+ * form only when the request actually came through BASE_HOST, path form on
+ * any other host (localhost, workers.dev, a self-hoster's alternate domain).
+ * Otherwise local dev would hand out production links.
+ */
+export function siteUrl(c: { env: Env; req: { url: string } }, site: string): string {
   const url = new URL(c.req.url);
   const base = c.env.BASE_HOST;
-  return base ? `${url.protocol}//${site}.${base}/` : `${url.protocol}//${url.host}/s/${site}/`;
+  const viaBase = base && (url.host === base || url.host.endsWith(`.${base}`));
+  return viaBase ? `${url.protocol}//${site}.${base}/` : `${url.protocol}//${url.host}/s/${site}/`;
 }
 
 export function createApp(): Hono<AppEnv> {
