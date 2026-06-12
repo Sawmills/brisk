@@ -43,7 +43,7 @@ npm install -g @brisk/cli          # or: node path/to/brisk/cli/dist/cli.js
 brisk whoami                       # confirm which instance + who you are
 ```
 
-Brisk runs against an *instance* (a deployed Brisk server, or local dev). Resolve
+Brisk runs against an _instance_ (a deployed Brisk server, or local dev). Resolve
 it before deploying:
 
 - **A real instance:** `brisk login brisk.example.com` once — it opens the

@@ -3,3 +3,4 @@ dist/
 .wrangler/
 worker/assets/brisk.js
 pnpm-lock.yaml
+docs/superpowers/
