@@ -9,17 +9,25 @@ ${bold('Usage')}
   brisk init [name]            scaffold a new site folder
   brisk deploy [dir]           upload a folder, get a URL
   brisk dev [dir]              deploy on every file change
-  brisk list                   all sites on the server
+  brisk list                   all sites on the instance
   brisk open [site]            open a site in the browser
   brisk pull <site> [dir]      download a site's source to remix it
 
+${bold('Accounts')}
+  brisk login [server]         log in to an instance (creates a profile)
+  brisk logout                 remove a profile
+  brisk whoami                 who you are on the current instance
+  brisk profiles               list profiles (● marks the active one)
+  brisk profile use <name>     switch the active profile
+
 ${bold('Options')}
   --site <name>                override the site name (default: brisk.json or folder name)
-  --server <url>               Brisk server (default: $BRISK_SERVER, brisk.json, or http://localhost:8787)
+  --server <url>               target instance directly, e.g. brisk.example.com
+  --profile <name>             use a specific profile for this command
 
 ${bold('Environment')}
-  BRISK_SERVER                 default server URL
-  BRISK_TOKEN                  bearer token, needed when the server runs with AUTH=google
+  BRISK_PROFILE                like --profile
+  BRISK_SERVER, BRISK_TOKEN    direct server + bearer token (CI)
 `;
 
 async function main(): Promise<void> {
@@ -27,6 +35,7 @@ async function main(): Promise<void> {
     options: {
       site: { type: 'string' },
       server: { type: 'string' },
+      profile: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
     allowPositionals: true,
@@ -38,7 +47,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const flags = { site: values.site, server: values.server };
+  const flags = { site: values.site, server: values.server, profile: values.profile };
   switch (command) {
     case 'init':
       return commands.init(args[0], flags);
@@ -55,6 +64,18 @@ async function main(): Promise<void> {
     case 'pull':
       if (!args[0]) throw new Error('usage: brisk pull <site> [dir]');
       return commands.pull(args[0], args[1], flags);
+    case 'login':
+      return commands.login(args[0], flags);
+    case 'logout':
+      return commands.logout(flags);
+    case 'whoami':
+      return commands.whoami(flags);
+    case 'profiles':
+      return commands.profiles();
+    case 'profile':
+      if (args[0] === 'use' && args[1]) return commands.profileUse(args[1]);
+      if (args[0] === 'list' || !args[0]) return commands.profiles();
+      throw new Error('usage: brisk profile use <name> | brisk profiles');
     default:
       console.log(`${yellow('unknown command:')} ${command}\n\n${HELP}`);
       process.exitCode = 1;

@@ -1,7 +1,10 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
-/** Per-folder config, written by `brisk init`. */
+// ---- per-folder config (brisk.json) -----------------------------------------
+
+/** Written by `brisk init`; `server` pins a repo to a specific instance. */
 export interface SiteConfig {
   site?: string;
   server?: string;
@@ -17,22 +20,122 @@ export function loadConfig(dir: string): SiteConfig {
   }
 }
 
-/** Flag > env > brisk.json > local dev default. */
-export function serverUrl(flag: string | undefined, cfg: SiteConfig): string {
-  const url = flag ?? process.env.BRISK_SERVER ?? cfg.server ?? 'http://localhost:8787';
-  return url.replace(/\/+$/, '');
+// ---- profiles (~/.config/brisk/config.json) ----------------------------------
+
+/** One per Brisk instance you've logged into, AWS-profile style. */
+export interface Profile {
+  server: string;
+  /** Personal token from `brisk login`. Absent on AUTH=none instances. */
+  token?: string;
+  email?: string;
 }
 
-/** When the server runs with AUTH=google, the CLI authenticates with DEPLOY_TOKEN. */
-export function authHeaders(): Record<string, string> {
-  const token = process.env.BRISK_TOKEN;
-  return token ? { authorization: `Bearer ${token}` } : {};
+export interface GlobalConfig {
+  current?: string;
+  profiles: Record<string, Profile>;
 }
 
-export async function api<T>(server: string, route: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${server}${route}`, {
+export function globalConfigPath(): string {
+  const base = process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), '.config');
+  return path.join(base, 'brisk', 'config.json');
+}
+
+export function loadGlobal(): GlobalConfig {
+  const file = globalConfigPath();
+  if (!fs.existsSync(file)) return { profiles: {} };
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<GlobalConfig>;
+    return { ...parsed, profiles: parsed.profiles ?? {} };
+  } catch {
+    throw new Error(`${file} is not valid JSON — fix or delete it`);
+  }
+}
+
+export function saveGlobal(cfg: GlobalConfig): void {
+  const file = globalConfigPath();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${JSON.stringify(cfg, null, 2)}\n`, { mode: 0o600 });
+}
+
+// ---- connection resolution -----------------------------------------------------
+
+export interface Connection {
+  server: string;
+  token?: string;
+  /** Which profile supplied this connection, when one did. */
+  profile?: string;
+}
+
+export const normalizeServer = (url: string): string => {
+  const withScheme = /^https?:\/\//.test(url)
+    ? url
+    : `${/^(localhost|127\.)/.test(url) ? 'http' : 'https'}://${url}`;
+  return withScheme.replace(/\/+$/, '');
+};
+
+const sameInstance = (a: string, b: string): boolean => normalizeServer(a) === normalizeServer(b);
+
+function profileMatching(cfg: GlobalConfig, server: string): [string, Profile] | undefined {
+  return Object.entries(cfg.profiles).find(([, p]) => sameInstance(p.server, server));
+}
+
+/**
+ * Where a command talks to, and as whom. Precedence:
+ *   --profile / BRISK_PROFILE  →  that profile (its server + token)
+ *   --server / BRISK_SERVER    →  that server, token from a matching profile or BRISK_TOKEN
+ *   brisk.json `server`        →  same matching rule (the repo pins its instance)
+ *   the active profile         →  from `brisk login` / `brisk profile use`
+ *   http://localhost:8787      →  local dev fallback
+ */
+export function resolveConnection(
+  flags: { server?: string; profile?: string },
+  dir: string,
+): Connection {
+  const cfg = loadGlobal();
+
+  const profileName = flags.profile ?? process.env.BRISK_PROFILE;
+  if (profileName) {
+    const profile = cfg.profiles[profileName];
+    if (!profile) {
+      const known = Object.keys(cfg.profiles).join(', ') || '(none — run brisk login)';
+      throw new Error(`no profile "${profileName}" — known profiles: ${known}`);
+    }
+    return {
+      server: normalizeServer(flags.server ?? profile.server),
+      token: profile.token,
+      profile: profileName,
+    };
+  }
+
+  const explicit = flags.server ?? process.env.BRISK_SERVER ?? loadConfig(dir).server;
+  if (explicit) {
+    const server = normalizeServer(explicit);
+    const match = profileMatching(cfg, server);
+    return {
+      server,
+      token: process.env.BRISK_TOKEN ?? match?.[1].token,
+      profile: match?.[0],
+    };
+  }
+
+  const active = cfg.current ? cfg.profiles[cfg.current] : undefined;
+  if (active) {
+    return { server: normalizeServer(active.server), token: active.token, profile: cfg.current };
+  }
+
+  return { server: 'http://localhost:8787', token: process.env.BRISK_TOKEN };
+}
+
+// ---- http ------------------------------------------------------------------------
+
+export function authHeaders(conn: Connection): Record<string, string> {
+  return conn.token ? { authorization: `Bearer ${conn.token}` } : {};
+}
+
+export async function api<T>(conn: Connection, route: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${conn.server}${route}`, {
     ...init,
-    headers: { ...authHeaders(), ...(init.headers as Record<string, string>) },
+    headers: { ...authHeaders(conn), ...(init.headers as Record<string, string>) },
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -41,6 +144,9 @@ export async function api<T>(server: string, route: string, init: RequestInit = 
       message = (JSON.parse(body) as { error?: string }).error ?? body;
     } catch {
       /* not json */
+    }
+    if (res.status === 401) {
+      message = `unauthenticated — run: brisk login ${conn.server}`;
     }
     throw new Error(
       `${init.method ?? 'GET'} ${route} → ${res.status}${message ? `: ${message}` : ''}`,
