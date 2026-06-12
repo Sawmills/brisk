@@ -34,18 +34,27 @@ document.querySelectorAll('.copy[data-copy]').forEach((b) => wireCopy(b));
 
 // ---- identity + presence ----------------------------------------------------
 
-brisk.me().then((user) => {
-  $('who').textContent = user.name === 'Dev' ? user.email : user.name.toLowerCase();
-  $('whoami').hidden = false;
-});
+// On a public instance visitors get a 401 here: show the sign-in link and
+// skip presence (its websocket would be rejected anyway).
+const whoami = brisk.me().then(
+  (user) => {
+    $('who').textContent = user.name === 'Dev' ? user.email : user.name.toLowerCase();
+    $('whoami').hidden = false;
 
-const lobby = brisk.channel('dashboard');
-lobby.on('presence', (members) => {
-  const others = members.length - 1;
-  $('presence').hidden = others < 1;
-  if (others >= 1)
-    $('presence').title = `${others} other ${others === 1 ? 'person' : 'people'} here now`;
-});
+    const lobby = brisk.channel('dashboard');
+    lobby.on('presence', (members) => {
+      const others = members.length - 1;
+      $('presence').hidden = others < 1;
+      if (others >= 1)
+        $('presence').title = `${others} other ${others === 1 ? 'person' : 'people'} here now`;
+    });
+    return user;
+  },
+  () => {
+    $('signin').hidden = false;
+    return null;
+  },
+);
 
 // ---- site list ----------------------------------------------------------------
 
@@ -106,7 +115,15 @@ async function load() {
   ({ sites } = await res.json());
 
   if (!sites.length) {
-    $('quickstart').hidden = false;
+    // The quickstart teaches deploying — pointless for signed-out visitors.
+    if (await whoami) {
+      $('quickstart').hidden = false;
+    } else {
+      const section = $('sites-section');
+      section.hidden = false;
+      $('site-count').textContent = 'nothing deployed yet — sign in to ship the first site';
+      $('filter').hidden = true;
+    }
     return;
   }
   $('sites-section').hidden = false;
