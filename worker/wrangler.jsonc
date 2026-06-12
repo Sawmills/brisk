@@ -53,10 +53,14 @@
     "VISIBILITY": "public"
   },
 
-  "routes": [
-    { "pattern": "brisk.example.com", "custom_domain": true },
-    { "pattern": "*.brisk.example.com/*", "zone_name": "brisk.example.com" }
-  ]
+  // Domains/routes are deliberately NOT configured here: when a `routes` key
+  // exists, `wrangler dev` rewrites every local request's Host to the route's
+  // zone, which breaks foo.localhost subdomains and makes the API hand out
+  // production URLs from local dev. Attach them once in the Cloudflare
+  // dashboard instead (they persist across deploys):
+  //   Workers & Pages → brisk → Settings → Domains & Routes:
+  //     custom domain  brisk.example.com
+  //     route          *.brisk.example.com/*   (zone: brisk.example.com)
 
   // Secrets (set with `wrangler secret put <NAME>`):
   //   SESSION_SECRET        — required when AUTH=google; signs session cookies
@@ -66,9 +70,4 @@
   //   ANTHROPIC_API_KEY     — optional, powers brisk.ai via Claude
   //   OPENAI_API_KEY        — optional, powers brisk.ai via OpenAI
 
-  // To serve wildcard subdomains, add routes on your zone, e.g.:
-  // "routes": [
-  //   { "pattern": "brisk.example.com", "custom_domain": true },
-  //   { "pattern": "*.brisk.example.com/*", "zone_name": "example.com" }
-  // ]
 }

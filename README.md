@@ -98,16 +98,20 @@ with no auth, suitable for a private network. For the full experience:
 
 ### Wildcard subdomains
 
-Add routes in `wrangler.jsonc` (see the comment there) so `foo.brisk.example.com`
-serves site `foo`:
+Set `"BASE_HOST": "brisk.example.com"` in `wrangler.jsonc`, then attach the
+domain **in the Cloudflare dashboard** (Workers & Pages → your worker →
+Settings → Domains & Routes):
 
-```jsonc
-"routes": [
-  { "pattern": "brisk.example.com", "custom_domain": true },
-  { "pattern": "*.brisk.example.com/*", "zone_name": "example.com" }
-],
-"vars": { "BASE_HOST": "brisk.example.com", ... }
-```
+- custom domain: `brisk.example.com`
+- route: `*.brisk.example.com/*` (zone: `example.com`)
+
+Don't put these in `wrangler.jsonc` as a `routes` key: when routes exist in
+the config, `wrangler dev` rewrites every local request's Host to the
+production zone — `foo.localhost` subdomains stop working and the API hands
+out production URLs from local dev. Dashboard-attached domains persist across
+deploys, so this is one-time setup. Site links adapt automatically to however
+the instance is reached: subdomain URLs via `BASE_HOST`, `/s/<site>/` URLs
+everywhere else, localhost included.
 
 You'll also need a wildcard DNS record (`*.brisk` → CNAME to the apex) and a
 [Total TLS or advanced certificate](https://developers.cloudflare.com/ssl/edge-certificates/)
