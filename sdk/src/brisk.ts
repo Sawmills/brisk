@@ -52,6 +52,11 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.body && typeof init.body === 'string') headers.set('content-type', 'application/json');
   const res = await fetch(path, { ...init, headers });
   if (!res.ok) {
+    if (res.status === 401) {
+      throw new Error(
+        `brisk: ${init.method ?? 'GET'} ${path} → 401 — sign in required (this instance may be view-only for visitors)`,
+      );
+    }
     const body = await res.text().catch(() => '');
     throw new Error(`brisk: ${init.method ?? 'GET'} ${path} → ${res.status} ${body}`);
   }
@@ -71,6 +76,8 @@ const channels = new Map<string, ChannelState>();
 let ws: WebSocket | null = null;
 let wsReady = false;
 let backoff = 500;
+let failedDials = 0;
+let wsGaveUp = false;
 const sendQueue: object[] = [];
 
 function wsSend(msg: { t: string; [field: string]: unknown }): void {
@@ -86,6 +93,7 @@ function wsSend(msg: { t: string; [field: string]: unknown }): void {
 }
 
 function connect(): void {
+  if (wsGaveUp) return;
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${proto}//${location.host}/api/ws${site ? `?site=${site}` : ''}`);
@@ -93,6 +101,7 @@ function connect(): void {
   ws.onopen = () => {
     wsReady = true;
     backoff = 500;
+    failedDials = 0;
     // Re-establish everything after a (re)connect.
     for (const collection of dbSubs.keys()) ws!.send(JSON.stringify({ t: 'db:sub', collection }));
     for (const channel of channels.keys()) ws!.send(JSON.stringify({ t: 'join', channel }));
@@ -118,7 +127,15 @@ function connect(): void {
   };
 
   ws.onclose = () => {
+    const everOpened = wsReady;
     wsReady = false;
+    // A socket that dies before ever opening means we're being rejected
+    // (signed out, view-only instance) — retrying forever just burns requests.
+    if (!everOpened && ++failedDials >= 3) {
+      wsGaveUp = true;
+      console.warn('brisk: realtime is unavailable (sign in required?) — stopped retrying');
+      return;
+    }
     if (dbSubs.size || channels.size || sendQueue.length) {
       setTimeout(connect, backoff);
       backoff = Math.min(backoff * 2, 15_000);
