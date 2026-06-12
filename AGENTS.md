@@ -14,7 +14,7 @@ for the package you're changing:
 | ----------- | --------------------------------------------------------------------- | ------------------------------------ |
 | `worker/`   | The whole platform: one Cloudflare Worker + R2 + D1 + Durable Objects | [worker/AGENTS.md](worker/AGENTS.md) |
 | `sdk/`      | Zero-dep browser client, served at `/brisk.js`                        | [sdk/AGENTS.md](sdk/AGENTS.md)       |
-| `cli/`      | `brisk` command (init/deploy/dev/list/open/pull), zero deps           | [cli/AGENTS.md](cli/AGENTS.md)       |
+| `cli/`      | `brisk` command: deploy, dev, pull, login + profiles; zero deps       | [cli/AGENTS.md](cli/AGENTS.md)       |
 | `examples/` | Complete deployable sites; keep them tiny and dependency-free         | —                                    |
 
 The realtime wire protocol is shared between worker and sdk:

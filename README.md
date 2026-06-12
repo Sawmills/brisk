@@ -132,9 +132,16 @@ npx wrangler secret put DEPLOY_TOKEN       # token the CLI will use
 3. In `wrangler.jsonc` set `"AUTH": "google"` and, to restrict who gets in,
    `"ALLOWED_EMAIL_DOMAINS": "yourco.com"`.
 
-Browsers get redirected to Google; the CLI authenticates with
-`BRISK_TOKEN=<DEPLOY_TOKEN>`. With `AUTH: "none"` (the default) everyone is a
-trusted dev user — only do that on a network you trust.
+Browsers get redirected to Google. The CLI logs in as a real person:
+
+```sh
+brisk login brisk.example.com    # opens the browser, stores a personal token
+```
+
+Deploys are then attributed to your email on the dashboard. The
+`DEPLOY_TOKEN` secret is for CI (`BRISK_TOKEN=<DEPLOY_TOKEN>`, shows up as
+`ci@brisk`). With `AUTH: "none"` (the default) everyone is a trusted dev
+user — only do that on a network you trust.
 
 ### AI
 
@@ -155,9 +162,20 @@ brisk dev [dir]                 # redeploy on every save
 brisk list                      # everything on the instance
 brisk open [site]               # open in the browser
 brisk pull <site> [dir]         # download any site's source to remix it
+
+brisk login [server]            # log in to an instance, creates a profile
+brisk whoami                    # who you are, where
+brisk profiles                  # list profiles; `brisk profile use <name>` switches
 ```
 
-Configure with `BRISK_SERVER` (or `server` in `brisk.json`) and `BRISK_TOKEN`.
+Profiles work like AWS profiles: one per Brisk instance you use, stored in
+`~/.config/brisk/config.json`. `brisk login brisk.example.com` opens the
+browser, finishes the instance's Google login, and stores a personal token —
+deploys are then attributed to _you_. Every command takes `--profile <name>`
+(or `BRISK_PROFILE`); a repo can pin its instance with `server` in
+`brisk.json` and the CLI picks the matching profile automatically. For CI,
+skip profiles entirely: `BRISK_SERVER` + `BRISK_TOKEN`.
+
 `brisk init` also drops an `AGENTS.md` so coding agents immediately know the
 SDK — "make me a lunch-voting site" works out of the box.
 
