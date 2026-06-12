@@ -25,12 +25,31 @@ No frameworks, no deploy pipelines, no config files, no permissions. It runs
 entirely on Cloudflare (one Worker + R2 + D1 + Durable Objects) and costs
 approximately nothing.
 
+**What you get:**
+
+- **Instant hosting** — `brisk deploy` any folder; it's live at
+  `https://<name>.<your-host>/` in about a second. Deploys are atomic, names
+  are first come, and anyone can overwrite anything.
+- **Six backend primitives**, callable from any page with zero setup:
+  database, identity, AI, file storage, realtime channels, and the static
+  hosting itself.
+- **A dashboard** at the apex domain listing every site on the instance —
+  a living changelog of what your team is making — plus a one-page SDK
+  reference at `/docs`.
+- **A CLI** with watch-mode deploys (`brisk dev`) and the ability to download
+  any site's source (`brisk pull`) to remix it.
+- **One login for everything** (optional): Google OAuth on the apex domain
+  with a session cookie that covers every site subdomain.
+
 > **The trust model is the feature.** Brisk is for _internal_ use, behind a
 > login. Every site is visible and writable by every teammate. That's what
 > deletes all the complexity: no site owners, no API keys, no spam. Read
 > [Philosophy](#philosophy) before deploying it anywhere public.
 
-## Quickstart (local)
+## Running locally
+
+Everything runs on your machine via `wrangler dev` (Cloudflare's local
+runtime) — no Cloudflare account needed. Prerequisites: Node ≥ 22, pnpm.
 
 ```sh
 git clone <this repo> && cd brisk
@@ -38,8 +57,8 @@ pnpm install && pnpm build
 
 # terminal 1 — the platform
 cd worker
-npx wrangler d1 migrations apply brisk --local
-npx wrangler dev                       # http://localhost:8787
+npx wrangler d1 migrations apply brisk --local   # creates the local database
+npx wrangler dev                                 # http://localhost:8787
 
 # terminal 2 — ship a site
 node cli/dist/cli.js init my-site
@@ -47,7 +66,12 @@ node cli/dist/cli.js deploy my-site    # → http://localhost:8787/s/my-site/
 ```
 
 Open http://localhost:8787 for the dashboard. `*.localhost` subdomains work
-too: http://my-site.localhost:8787.
+too: http://my-site.localhost:8787. Local state (R2 objects, the D1 database,
+Durable Objects) lives under `worker/.wrangler/` and survives restarts.
+
+Optional local extras go in `worker/.dev.vars` (see
+[`.dev.vars.example`](worker/.dev.vars.example)) — e.g. an `ANTHROPIC_API_KEY`
+to exercise `brisk.ai` locally.
 
 ## Deploying to Cloudflare
 
@@ -175,6 +199,33 @@ brisk.example.com ─────┘    │
 - **Identity is platform-level**: Google OAuth on the apex, JWT session cookie
   scoped to the parent domain, every request arrives pre-authenticated — the
   same trick as putting a VM behind an identity-aware proxy.
+
+### Request flow
+
+1. A request arrives; the Worker derives the **site** from the subdomain, the
+   `/s/<site>/` path prefix, or the SDK's `x-brisk-site` header. The bare host
+   is just a site named `home` (the built-in dashboard, until someone deploys
+   over it).
+2. The **auth middleware** resolves a user: dev identity (`AUTH=none`),
+   session cookie, or CLI bearer token. Unauthenticated browsers bounce to
+   Google; APIs get a 401.
+3. Static requests look up the site's live deploy pointer (cached ~5s per
+   isolate) and stream the file from R2, resolving `/about` → `about.html`
+   and directory indexes. API requests hit D1/R2 directly; `/api/ws` upgrades
+   are handed to the site's Durable Object with the user attached.
+
+### Storage layout
+
+| Where                             | What                                                           |
+| --------------------------------- | -------------------------------------------------------------- |
+| R2 `deploys/<site>/<version>/…`   | site files; one immutable prefix per deploy                    |
+| R2 `uploads/<site>/<id>/<name>`   | `brisk.fs` uploads, immutable URLs                             |
+| D1 `sites`                        | one row per site: live-deploy pointer, size, who deployed last |
+| D1 `docs`                         | the document store: `(site, collection, id) → JSON`            |
+| Durable Object `SiteRoom(<site>)` | websocket fan-out: db events, channel messages, presence       |
+
+Nothing else persists. Deleting a site removes its row, docs, deploys, and
+uploads.
 
 ## Philosophy
 
