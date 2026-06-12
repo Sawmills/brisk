@@ -5,6 +5,7 @@ import { DocStore } from './docs';
 import { contentType } from './mime';
 import {
   deploySite,
+  getFile,
   getSite,
   isValidSiteName,
   listFiles,
@@ -178,6 +179,14 @@ export function createApp(): Hono<AppEnv> {
   app.get('/api/sites/:name/files', async (c) =>
     c.json({ files: await listFiles(c.env, c.req.param('name')) }),
   );
+
+  // Exact file from a site's live deploy — lets `brisk pull` remix any site.
+  app.get('/api/sites/:name/raw/*', async (c) => {
+    const name = c.req.param('name');
+    const path = new URL(c.req.url).pathname.slice(`/api/sites/${name}/raw/`.length);
+    const file = await getFile(c.env, name, decodeURIComponent(path));
+    return file ?? c.json({ error: 'not found' }, 404);
+  });
 
   app.delete('/api/sites/:name', async (c) => {
     await removeSite(c.env, c.req.param('name'));

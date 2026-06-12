@@ -30,7 +30,7 @@ async function readSession(c: Context<AppEnv>): Promise<User | null> {
   const token = getCookie(c, SESSION_COOKIE);
   if (!token || !c.env.SESSION_SECRET) return null;
   try {
-    const payload = await verify(token, c.env.SESSION_SECRET);
+    const payload = await verify(token, c.env.SESSION_SECRET, 'HS256');
     return { email: String(payload.email), name: String(payload.name), picture: payload.picture as string | undefined };
   } catch {
     return null;

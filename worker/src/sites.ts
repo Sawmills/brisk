@@ -162,6 +162,18 @@ export async function listFiles(env: Env, site: string): Promise<{ path: string;
   return files;
 }
 
+/** Exact file from the live deploy, no index/extension resolution. */
+export async function getFile(env: Env, site: string, path: string): Promise<Response | null> {
+  const deploy = await activeDeploy(env, site);
+  if (!deploy) return null;
+  const object = await env.BUCKET.get(deployPrefix(site, deploy) + path);
+  if (!object) return null;
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set('etag', object.httpEtag);
+  return new Response(object.body, { headers });
+}
+
 export async function removeSite(env: Env, site: string): Promise<void> {
   await env.DB.prepare('DELETE FROM sites WHERE name = ?').bind(site).run();
   pointerCache.delete(site);
