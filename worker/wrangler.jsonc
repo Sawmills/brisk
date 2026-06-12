@@ -1,0 +1,61 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "brisk",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-11-01",
+
+  // The dashboard (and the browser SDK at /brisk.js) ship as static assets.
+  // run_worker_first lets the worker decide when to serve them.
+  "assets": {
+    "directory": "assets",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "brisk",
+      "database_id": "REPLACE_WITH_YOUR_D1_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "brisk"
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [{ "name": "ROOMS", "class_name": "SiteRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SiteRoom"] }],
+
+  "vars": {
+    // Host your sites hang off of, e.g. "brisk.example.com" → site foo lives
+    // at foo.brisk.example.com. Leave empty for path-only mode (/s/foo/),
+    // which is what you get on *.workers.dev and local dev.
+    "BASE_HOST": "",
+    // "google" turns on Google OAuth for the whole platform (see README).
+    // "none" gives every visitor a dev identity — fine on a trusted network.
+    "AUTH": "none",
+    // Comma-separated email domains allowed through Google OAuth, e.g. "yourco.com".
+    "ALLOWED_EMAIL_DOMAINS": ""
+  }
+
+  // Secrets (set with `wrangler secret put <NAME>`):
+  //   SESSION_SECRET        — required when AUTH=google; signs session cookies
+  //   GOOGLE_CLIENT_ID      — Google OAuth client
+  //   GOOGLE_CLIENT_SECRET  — Google OAuth client
+  //   DEPLOY_TOKEN          — optional bearer token the CLI uses when AUTH=google
+  //   ANTHROPIC_API_KEY     — optional, powers brisk.ai via Claude
+  //   OPENAI_API_KEY        — optional, powers brisk.ai via OpenAI
+
+  // To serve wildcard subdomains, add routes on your zone, e.g.:
+  // "routes": [
+  //   { "pattern": "brisk.example.com", "custom_domain": true },
+  //   { "pattern": "*.brisk.example.com/*", "zone_name": "example.com" }
+  // ]
+}
