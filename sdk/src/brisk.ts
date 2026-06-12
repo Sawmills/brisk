@@ -44,9 +44,7 @@ type ServerMessage =
 // ---- site + transport -----------------------------------------------------
 
 /** In path mode (/s/<site>/...) the page must tell the server its site. */
-const PATH_MODE = /^\/s\/([a-z0-9-]+)(\/|$)/.exec(location.pathname);
-
-export const site: string | null = PATH_MODE?.[1] ?? null;
+export const site: string | null = /^\/s\/([a-z0-9-]+)(\/|$)/.exec(location.pathname)?.[1] ?? null;
 
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
@@ -75,12 +73,16 @@ let wsReady = false;
 let backoff = 500;
 const sendQueue: object[] = [];
 
-function wsSend(msg: object): void {
-  if (wsReady) ws!.send(JSON.stringify(msg));
-  else {
-    sendQueue.push(msg);
-    connect();
+function wsSend(msg: { t: string; [field: string]: unknown }): void {
+  if (wsReady) {
+    ws!.send(JSON.stringify(msg));
+    return;
   }
+  // No point dialing a connection just to tell the server we left: a dead
+  // socket has no subscriptions to undo.
+  if (msg.t === 'db:unsub' || msg.t === 'leave') return;
+  sendQueue.push(msg);
+  connect();
 }
 
 function connect(): void {
@@ -207,7 +209,13 @@ let cachedMe: Promise<User> | null = null;
 
 /** Who's looking at the page. Free, thanks to platform-level auth. */
 export function me(): Promise<User> {
-  cachedMe ??= api<User>('/api/me');
+  if (!cachedMe) {
+    cachedMe = api<User>('/api/me');
+    // A transient failure shouldn't poison the cache for the page's lifetime.
+    cachedMe.catch(() => {
+      cachedMe = null;
+    });
+  }
   return cachedMe;
 }
 
@@ -229,13 +237,20 @@ export function channel(name: string) {
   }
   const current = state;
 
+  function on(event: 'message', fn: (data: unknown, from: User) => void): () => void;
+  function on(event: 'presence', fn: (members: User[]) => void): () => void;
+  // The overloads above keep callers type-safe; internally the two handler
+  // sets are interchangeable.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function on(event: 'message' | 'presence', fn: (...args: any[]) => void): () => void {
+    const set = (event === 'message' ? current.message : current.presence) as Set<typeof fn>;
+    set.add(fn);
+    return () => set.delete(fn);
+  }
+
   return {
     send: (data: unknown) => wsSend({ t: 'send', channel: name, data }),
-    on(event: 'message' | 'presence', fn: (...args: never[]) => void): () => void {
-      const set = event === 'message' ? current.message : current.presence;
-      set.add(fn as never);
-      return () => set.delete(fn as never);
-    },
+    on,
     get members(): User[] {
       return current.members;
     },
