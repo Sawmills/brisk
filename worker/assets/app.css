@@ -1,0 +1,454 @@
+/* Brisk dashboard — warm paper, hyperlink blue, monospace throughout. */
+
+:root {
+  --paper: oklch(96.5% 0.012 85);
+  --paper-raised: oklch(93.5% 0.014 85);
+  --ink: oklch(24% 0.015 75);
+  --ink-dim: oklch(48% 0.014 75);
+  --line: oklch(87% 0.013 85);
+  --accent: oklch(46% 0.19 262);
+  --accent-soft: oklch(46% 0.19 262 / 0.09);
+  --live: oklch(58% 0.15 150);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: oklch(21% 0.012 75);
+    --paper-raised: oklch(26% 0.014 75);
+    --ink: oklch(89% 0.012 85);
+    --ink-dim: oklch(62% 0.012 85);
+    --line: oklch(32% 0.012 75);
+    --accent: oklch(72% 0.13 262);
+    --accent-soft: oklch(72% 0.13 262 / 0.12);
+    --live: oklch(72% 0.14 150);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.65 ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  -webkit-font-smoothing: antialiased;
+}
+
+main {
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 0 1.5rem 6rem;
+}
+
+a {
+  color: var(--accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+/* ---- header ------------------------------------------------------------- */
+
+header {
+  display: flex;
+  align-items: baseline;
+  gap: 1.5rem;
+  padding: 1.6rem 0 0;
+}
+
+.wordmark {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--ink);
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+
+.wordmark .cursor {
+  display: inline-block;
+  width: 0.55em;
+  background: var(--accent);
+  color: transparent;
+  animation: blink 1.2s steps(1) infinite;
+}
+
+@keyframes blink {
+  50% { background: transparent; }
+}
+
+header nav {
+  display: flex;
+  gap: 1.25rem;
+  margin-left: auto;
+}
+
+header nav a,
+.whoami {
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
+header nav a:hover {
+  color: var(--accent);
+}
+
+.whoami {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+}
+
+.presence {
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: 50%;
+  background: var(--live);
+  animation: breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  50% { opacity: 0.35; }
+}
+
+/* ---- hero ----------------------------------------------------------------- */
+
+.hero {
+  margin: 4.5rem 0 3.5rem;
+}
+
+.hero h1 {
+  font-size: 1.7rem;
+  line-height: 1.3;
+  font-weight: 700;
+  margin: 0 0 0.4rem;
+  max-width: 32ch;
+  text-wrap: balance;
+}
+
+.hero p {
+  color: var(--ink-dim);
+  margin: 0;
+  max-width: 58ch;
+}
+
+/* ---- commands / code ------------------------------------------------------ */
+
+.cmd {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.55rem 0.9rem;
+  margin: 0.5rem 0;
+}
+
+.cmd code {
+  flex: 1;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.cmd code .dim {
+  color: var(--ink-dim);
+}
+
+.copy {
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--ink-dim);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.15rem 0.6rem;
+  cursor: pointer;
+  transition: color 150ms ease, border-color 150ms ease, transform 100ms ease;
+}
+
+.copy:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.copy:active {
+  transform: scale(0.96);
+}
+
+.copy.done {
+  color: var(--live);
+  border-color: var(--live);
+}
+
+pre {
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.9rem 1.1rem;
+  overflow-x: auto;
+  line-height: 1.55;
+  font-size: 0.88rem;
+}
+
+code {
+  font-family: inherit;
+}
+
+p code, li code, td code {
+  background: var(--paper-raised);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  font-size: 0.92em;
+}
+
+/* ---- quickstart (the empty state) ----------------------------------------- */
+
+.quickstart {
+  counter-reset: step;
+  margin: 2.5rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.quickstart li {
+  counter-increment: step;
+  margin: 1.75rem 0;
+}
+
+.quickstart li > p {
+  margin: 0 0 0.25rem;
+  color: var(--ink-dim);
+  font-size: 0.9rem;
+}
+
+.quickstart li > p::before {
+  content: counter(step) '. ';
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* ---- site list -------------------------------------------------------------- */
+
+.sites-head {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin: 3rem 0 0.5rem;
+}
+
+.sites-head h2 {
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--ink-dim);
+  margin: 0;
+  text-transform: lowercase;
+}
+
+#filter {
+  margin-left: auto;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--ink);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  padding: 0.1rem 0;
+  width: 11rem;
+  outline: none;
+  transition: border-color 150ms ease;
+}
+
+#filter:focus {
+  border-color: var(--accent);
+}
+
+#filter::placeholder {
+  color: var(--ink-dim);
+  opacity: 0.7;
+}
+
+.site-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+  animation: settle 300ms var(--ease-out);
+}
+
+@keyframes settle {
+  from { opacity: 0; transform: translateY(4px); }
+}
+
+.site-row {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1fr) 5.5rem 5.5rem 6.5rem minmax(0, 12rem) auto;
+  gap: 1rem;
+  align-items: baseline;
+  padding: 0.6rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.88rem;
+  transition: background 150ms ease;
+}
+
+.site-row:hover {
+  background: var(--accent-soft);
+}
+
+.site-row .name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-row .meta {
+  color: var(--ink-dim);
+  font-size: 0.8rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.site-row .by {
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.site-row .copy {
+  opacity: 0;
+  transition: opacity 150ms ease, color 150ms ease, border-color 150ms ease, transform 100ms ease;
+}
+
+.site-row:hover .copy,
+.site-row .copy:focus-visible,
+.site-row .copy.done {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .site-row .copy {
+    opacity: 1;
+  }
+}
+
+.list-empty {
+  color: var(--ink-dim);
+  padding: 1.5rem 0.5rem;
+  font-size: 0.88rem;
+}
+
+/* ---- docs ---------------------------------------------------------------------- */
+
+.doc {
+  max-width: 44rem;
+}
+
+.doc h1 {
+  font-size: 1.5rem;
+  margin: 3.5rem 0 0.5rem;
+}
+
+.doc h2 {
+  font-size: 1.05rem;
+  margin: 3rem 0 0.75rem;
+  padding-top: 1rem;
+}
+
+.doc h2 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.doc h2 a:hover::after {
+  content: ' #';
+  color: var(--accent);
+}
+
+.doc p {
+  max-width: 65ch;
+}
+
+.doc .lede {
+  color: var(--ink-dim);
+}
+
+.doc table {
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  width: 100%;
+}
+
+.doc th {
+  text-align: left;
+  font-weight: 700;
+  border-bottom: 1px solid var(--ink-dim);
+  padding: 0.3rem 1rem 0.3rem 0;
+}
+
+.doc td {
+  border-bottom: 1px solid var(--line);
+  padding: 0.4rem 1rem 0.4rem 0;
+  vertical-align: top;
+}
+
+.toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.2rem;
+  padding: 0;
+  margin: 1rem 0 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+/* ---- footer ---------------------------------------------------------------------- */
+
+footer {
+  margin-top: 5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  color: var(--ink-dim);
+  font-size: 0.8rem;
+  display: flex;
+  gap: 1.5rem;
+}
+
+footer a {
+  color: inherit;
+}
+
+/* ---- small screens ----------------------------------------------------------------- */
+
+@media (max-width: 40rem) {
+  .site-row {
+    grid-template-columns: 1fr auto;
+  }
+  .site-row .meta.files,
+  .site-row .meta.size,
+  .site-row .by {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wordmark .cursor,
+  .presence {
+    animation: none;
+  }
+  .site-list {
+    animation: none;
+  }
+  .copy,
+  .site-row,
+  #filter,
+  header nav a {
+    transition: none;
+  }
+}
