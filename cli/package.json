@@ -1,5 +1,5 @@
 {
-  "name": "@brisk/cli",
+  "name": "@usebrisk/cli",
   "version": "0.1.0",
   "description": "The brisk CLI: init, deploy, dev, list, open, pull.",
   "engines": {
@@ -7,6 +7,23 @@
   },
   "license": "MIT",
   "type": "module",
+  "homepage": "https://github.com/tomperi/brisk/tree/main/cli",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tomperi/brisk.git",
+    "directory": "cli"
+  },
+  "bugs": "https://github.com/tomperi/brisk/issues",
+  "keywords": [
+    "brisk",
+    "cli",
+    "deploy",
+    "cloudflare",
+    "hosting"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "brisk": "dist/cli.js"
   },

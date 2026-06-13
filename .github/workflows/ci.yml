@@ -18,5 +18,5 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm typecheck
-      - run: pnpm --filter @brisk/worker test
+      - run: pnpm --filter @usebrisk/worker test
       - run: pnpm format:check

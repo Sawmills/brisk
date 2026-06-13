@@ -39,7 +39,7 @@ jobs (cron), or a public site exposed to untrusted users.
 ### 1. Get the CLI and target an instance
 
 ```sh
-npm install -g @brisk/cli          # or: node path/to/brisk/cli/dist/cli.js
+npm install -g @usebrisk/cli          # or: node path/to/brisk/cli/dist/cli.js
 brisk whoami                       # confirm which instance + who you are
 ```
 

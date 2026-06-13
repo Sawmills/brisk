@@ -10,7 +10,7 @@
   "packageManager": "pnpm@10.22.0",
   "scripts": {
     "build": "pnpm -r build",
-    "dev": "pnpm --filter @brisk/worker dev",
+    "dev": "pnpm --filter @usebrisk/worker dev",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "format": "prettier --write \"**/*.{ts,js,css,html,md,json}\"",

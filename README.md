@@ -89,7 +89,7 @@ npx wrangler r2 bucket create brisk
 npx wrangler d1 migrations apply brisk --remote
 
 # 3. Ship it
-pnpm --filter @brisk/sdk build        # bundles the SDK into worker assets
+pnpm --filter @usebrisk/sdk build        # bundles the SDK into worker assets
 npx wrangler deploy
 ```
 
@@ -247,7 +247,7 @@ on the provider side if your sites lean on it.
 ## The CLI
 
 ```sh
-npm install -g @brisk/cli       # or run from this repo: node cli/dist/cli.js
+npm install -g @usebrisk/cli       # or run from this repo: node cli/dist/cli.js
 
 brisk init [name]               # scaffold a folder (brisk.json, index.html, AGENTS.md)
 brisk deploy [dir]              # upload, get a URL
@@ -363,6 +363,20 @@ pnpm format
 The repo is a pnpm workspace: [`worker/`](worker) (the platform),
 [`sdk/`](sdk) (browser client served at `/brisk.js`), [`cli/`](cli), and
 [`examples/`](examples).
+
+### Releasing
+
+`@usebrisk/cli` and `@usebrisk/sdk` publish to npm in lockstep. Bump both to
+the same version, then push a matching tag:
+
+```sh
+git tag v0.1.1 && git push origin v0.1.1
+```
+
+The [`release`](.github/workflows/release.yml) workflow builds, runs the CI
+gates, publishes both packages, and cuts a GitHub release. It fires only on
+`v*` tags — nothing publishes on ordinary pushes. Requires an `NPM_TOKEN`
+repo secret (an npm automation token scoped to the `@usebrisk` org).
 
 ## License
 

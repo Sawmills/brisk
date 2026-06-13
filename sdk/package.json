@@ -1,11 +1,44 @@
 {
-  "name": "@brisk/sdk",
+  "name": "@usebrisk/sdk",
   "version": "0.1.0",
   "description": "The zero-config browser SDK every Brisk site gets at /brisk.js.",
   "license": "MIT",
   "type": "module",
+  "homepage": "https://github.com/tomperi/brisk/tree/main/sdk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tomperi/brisk.git",
+    "directory": "sdk"
+  },
+  "bugs": "https://github.com/tomperi/brisk/issues",
+  "keywords": [
+    "brisk",
+    "browser",
+    "sdk",
+    "realtime",
+    "cloudflare"
+  ],
+  "main": "./dist/brisk.mjs",
+  "module": "./dist/brisk.mjs",
+  "types": "./dist/brisk.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/brisk.d.ts",
+      "import": "./dist/brisk.mjs"
+    },
+    "./brisk.js": "./dist/brisk.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "esbuild src/brisk.ts --bundle --format=iife --global-name=brisk --outfile=dist/brisk.js && node copy-to-worker.mjs",
+    "build": "pnpm run build:iife && pnpm run build:esm && pnpm run build:types && node copy-to-worker.mjs",
+    "build:iife": "esbuild src/brisk.ts --bundle --format=iife --global-name=brisk --outfile=dist/brisk.js",
+    "build:esm": "esbuild src/brisk.ts --bundle --format=esm --outfile=dist/brisk.mjs",
+    "build:types": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
     "test": "echo 'covered by worker integration tests'"
   },
