@@ -41,7 +41,7 @@ const apexOrigin = (c: Context<AppEnv>): string => `${new URL(c.req.url).protoco
  * sitting behind an identity-aware proxy.
  */
 function cookieDomain(c: Context<AppEnv>): string | undefined {
-  const base = c.env.BASE_HOST.split(':')[0];
+  const base = (c.env.BASE_HOST ?? '').split(':')[0];
   return base && base !== 'localhost' ? `.${base}` : undefined;
 }
 
@@ -111,10 +111,10 @@ async function tokenMatches(presented: string, expected: string): Promise<boolea
  */
 export function isAllowedEmail(
   email: string,
-  env: { ALLOWED_EMAILS: string; ALLOWED_EMAIL_DOMAINS: string },
+  env: { ALLOWED_EMAILS?: string; ALLOWED_EMAIL_DOMAINS?: string },
 ): boolean {
-  const list = (csv: string) =>
-    csv
+  const list = (csv: string | undefined) =>
+    (csv ?? '')
       .toLowerCase()
       .split(',')
       .map((s) => s.trim())

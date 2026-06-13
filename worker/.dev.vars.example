@@ -1,17 +1,17 @@
 # Copy to .dev.vars for local development with `wrangler dev`.
-# Values here override the `vars` in wrangler.jsonc, so if your wrangler.jsonc
-# carries production settings (AUTH=google etc.), this is where you relax them
-# locally:
+# wrangler.jsonc carries no instance config, so this file is where local runs
+# get their vars and secrets. Unset means the safe defaults: path-only,
+# no-auth, private — enough to build sites locally without anything below.
 
-# AUTH=none
-# VISIBILITY=private
-
-# To exercise google-mode / public-mode behavior locally instead:
+# Flip on real auth / public mode to exercise that behavior locally:
 # AUTH=google
 # VISIBILITY=public
+# BASE_HOST=                       # leave empty for /s/<site>/ URLs locally
+# ALLOWED_EMAILS=                  # exact emails, comma-separated
+# ALLOWED_EMAIL_DOMAINS=           # whole domains, comma-separated
 # SESSION_SECRET=dev-secret
-# DEPLOY_TOKEN=dev-token          # then: BRISK_TOKEN=dev-token brisk deploy …
-# GOOGLE_CLIENT_ID=               # only for testing the real browser login
+# DEPLOY_TOKEN=dev-token           # then: BRISK_TOKEN=dev-token brisk deploy …
+# GOOGLE_CLIENT_ID=                # only for testing the real browser login
 # GOOGLE_CLIENT_SECRET=
 
 # Optional AI providers:

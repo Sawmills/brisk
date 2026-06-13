@@ -29,7 +29,7 @@ function formFiles(body: Record<string, unknown>): File[] {
  * `foo.brisk.example.com` → `foo`. `foo.localhost` always works too, whatever
  * BASE_HOST says — local dev shouldn't depend on production config.
  */
-export function siteFromHost(host: string, baseHost: string): string | null {
+export function siteFromHost(host: string, baseHost = ''): string | null {
   const bare = host.split(':')[0]!.toLowerCase();
   const bases = [...new Set([baseHost.split(':')[0]!.toLowerCase(), 'localhost'])].filter(Boolean);
   for (const base of bases) {

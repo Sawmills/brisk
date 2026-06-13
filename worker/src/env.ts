@@ -4,10 +4,15 @@ export interface Env {
   ROOMS: DurableObjectNamespace;
   ASSETS: Fetcher;
 
-  /** Sites hang off this host (`foo.<BASE_HOST>`). Empty = path-only mode. */
-  BASE_HOST: string;
-  /** "google" = Google OAuth on the apex domain; "none" = trusted network. */
-  AUTH: 'none' | 'google';
+  // Instance configuration. These are NOT in wrangler.jsonc — set them as
+  // Variables in the Cloudflare dashboard (or `.dev.vars` locally) so the repo
+  // carries no deployment-specific config. Every one is optional and defaults
+  // safely in code: unset means path-only, no-auth, private.
+
+  /** Sites hang off this host (`foo.<BASE_HOST>`). Unset = path-only mode. */
+  BASE_HOST?: string;
+  /** "google" = Google OAuth on the apex domain; unset/"none" = trusted network. */
+  AUTH?: 'none' | 'google';
   /**
    * "public" lets anonymous visitors view sites and the dashboard (read-only,
    * edge-cached); every API and deploy still requires login. Default: private.
@@ -15,10 +20,10 @@ export interface Env {
   VISIBILITY?: 'private' | 'public';
   /**
    * Who gets through OAuth: comma-separated email domains and/or exact
-   * emails. Both empty = allow anyone who can complete the Google login.
+   * emails. Both empty/unset = allow anyone who can complete the Google login.
    */
-  ALLOWED_EMAIL_DOMAINS: string;
-  ALLOWED_EMAILS: string;
+  ALLOWED_EMAIL_DOMAINS?: string;
+  ALLOWED_EMAILS?: string;
 
   SESSION_SECRET?: string;
   GOOGLE_CLIENT_ID?: string;

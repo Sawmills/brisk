@@ -3,7 +3,9 @@
   "name": "brisk",
   "main": "src/index.ts",
   "compatibility_date": "2025-09-06",
-  "account_id": "YOUR_CLOUDFLARE_ACCOUNT_ID",
+
+  // account_id is intentionally not committed — set the CLOUDFLARE_ACCOUNT_ID
+  // environment variable (or run `wrangler login` with a single account).
 
   // The dashboard (and the browser SDK at /brisk.js) ship as static assets.
   // run_worker_first lets the worker decide when to serve them.
@@ -17,6 +19,10 @@
     {
       "binding": "DB",
       "database_name": "brisk",
+      // Run `wrangler d1 create brisk` and paste the id here. Any value works
+      // for local dev and tests; the real id is only needed for remote deploys.
+      // To keep your real id out of git: after editing, run
+      //   git update-index --skip-worktree worker/wrangler.jsonc
       "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID",
       "migrations_dir": "migrations"
     }
@@ -34,24 +40,16 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SiteRoom"] }],
 
-  "vars": {
-    // Host your sites hang off of, e.g. "brisk.example.com" → site foo lives
-    // at foo.brisk.example.com. Leave empty for path-only mode (/s/foo/),
-    // which is what you get on *.workers.dev and local dev.
-    "BASE_HOST": "brisk.example.com",
-    // "google" turns on Google OAuth for the whole platform (see README).
-    // "none" gives every visitor a dev identity — fine on a trusted network.
-    "AUTH": "google",
-    // Who gets through Google OAuth (comma-separated, either list admits):
-    // whole domains, e.g. "yourco.com" — or exact emails for personal
-    // instances, e.g. "you@gmail.com" (never allow all of "gmail.com").
-    "ALLOWED_EMAIL_DOMAINS": "",
-    "ALLOWED_EMAILS": "you@example.com",
-    // "public" = demo mode: anyone can view sites and the dashboard without
-    // signing in; db/ai/files/realtime and deploys still require login.
-    // "private" (the default) gates everything behind login.
-    "VISIBILITY": "public"
-  },
+  // Instance config (BASE_HOST, AUTH, ALLOWED_EMAILS, ALLOWED_EMAIL_DOMAINS,
+  // VISIBILITY) is deliberately NOT here. It's deployment-specific, so it lives
+  // in the Cloudflare dashboard (Workers & Pages → brisk → Settings → Variables
+  // and Secrets), and in `.dev.vars` for local `wrangler dev`. Every var
+  // defaults safely in code when unset: path-only, no-auth, private. See the
+  // README ("Configuration") for the full list.
+  //
+  // keep_vars stops `wrangler deploy` from deleting the vars you set in the
+  // dashboard (without it, a deploy wipes any var not present in this file).
+  "keep_vars": true,
 
   // Domains/routes are deliberately NOT configured here: when a `routes` key
   // exists, `wrangler dev` rewrites every local request's Host to the route's
@@ -60,7 +58,7 @@
   // dashboard instead (they persist across deploys):
   //   Workers & Pages → brisk → Settings → Domains & Routes:
   //     custom domain  brisk.example.com
-  //     route          *.brisk.example.com/*   (zone: brisk.example.com)
+  //     route          *.brisk.example.com/*   (zone: example.com)
 
   // Secrets (set with `wrangler secret put <NAME>`):
   //   SESSION_SECRET        — required when AUTH=google; signs session cookies
@@ -69,5 +67,4 @@
   //   DEPLOY_TOKEN          — optional bearer token the CLI uses when AUTH=google
   //   ANTHROPIC_API_KEY     — optional, powers brisk.ai via Claude
   //   OPENAI_API_KEY        — optional, powers brisk.ai via OpenAI
-
 }
