@@ -1,0 +1,66 @@
+name: release
+
+# Dormant until you publish: fires only when a v* tag is pushed (e.g. v0.1.0),
+# or when run manually. Normal pushes and PRs never trigger it.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write # create the GitHub release (and the tag, on manual dispatch)
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Resolve version
+        id: v
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"          # tag drives the version
+          else
+            VERSION="$(node -p "require('./cli/package.json').version")"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Verify cli and sdk versions match
+        run: |
+          V="${{ steps.v.outputs.version }}"
+          CLI="$(node -p "require('./cli/package.json').version")"
+          SDK="$(node -p "require('./sdk/package.json').version")"
+          if [ "$CLI" != "$V" ] || [ "$SDK" != "$V" ]; then
+            echo "::error::version mismatch — expected $V but cli=$CLI sdk=$SDK"
+            exit 1
+          fi
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      # Same gates as ci.yml — don't ship something that wouldn't merge.
+      - run: pnpm typecheck
+      - run: pnpm --filter @usebrisk/worker test
+
+      - name: Publish @usebrisk/sdk
+        run: pnpm --filter @usebrisk/sdk publish --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @usebrisk/cli
+        run: pnpm --filter @usebrisk/cli publish --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: GitHub release
+        run: gh release create "${{ steps.v.outputs.tag }}" --target "$GITHUB_SHA" --title "${{ steps.v.outputs.tag }}" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
