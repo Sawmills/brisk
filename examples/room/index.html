@@ -1,0 +1,653 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>room</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        margin: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        overflow: hidden;
+        background: oklch(20% 0.03 264);
+      }
+      canvas {
+        display: block;
+      }
+      #ui {
+        position: fixed;
+        left: 1.4rem;
+        bottom: 1.2rem;
+        font:
+          14px/1.5 ui-monospace,
+          Menlo,
+          monospace;
+        color: oklch(82% 0.02 264);
+        pointer-events: none;
+        user-select: none;
+        text-shadow: 0 1px 6px oklch(20% 0.03 264 / 0.7);
+      }
+      #ui h1 {
+        font-size: 1rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      #ui p {
+        margin-top: 0.2rem;
+        color: oklch(66% 0.02 264);
+      }
+    </style>
+    <!-- Three.js is vendored next to this file so the site is fully self-contained:
+         it serves and runs on a public Brisk instance with no backend and no CDN. -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./vendor/three.module.min.js",
+          "three/addons/controls/OrbitControls.js": "./vendor/OrbitControls.js",
+          "three/addons/geometries/RoundedBoxGeometry.js": "./vendor/RoundedBoxGeometry.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="ui">
+      <h1>room</h1>
+      <p>drag to orbit · scroll to zoom</p>
+    </div>
+
+    <script type="module">
+      import * as THREE from 'three';
+      import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+      import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+      // Respect the visitor's reduced-motion preference (house practice; see 2048, fractal).
+      const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      // ---- palette (Brisk's oklch house colors, converted to sRGB hex) ----------
+      const C = {
+        bg: 0x171b2e,
+        baseTop: 0xcdbb9b,
+        baseRim: 0xb09a78,
+        floor: 0xd9c8ab,
+        floorAlt: 0xd0bd9c,
+        rug: 0x5b86d6,
+        rugTrim: 0x4069bf,
+        wallLeft: 0xece4d6,
+        wallBack: 0xbcc5ec,
+        panel: 0x2f59d0,
+        brisk: 0x2f59d0,
+        briskLite: 0x6f9bff,
+        cream: 0xf1ebdd,
+        creamDim: 0xd9cfba,
+        amber: 0xdf9a4e,
+        green: 0x46ad7a,
+        greenDim: 0x2f8a5e,
+        slate: 0x2b3346,
+        screen: 0x8fc2ff,
+      };
+
+      // ---- renderer / scene / camera --------------------------------------------
+      let renderer;
+      try {
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+      } catch {
+        // Served to anyone on a public instance — fail with a readable note, not a blank page.
+        document.querySelector('#ui p').textContent =
+          'this room needs webgl — it looks turned off in your browser';
+        throw new Error('WebGL unavailable');
+      }
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.05;
+      document.body.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(C.bg);
+
+      const camera = new THREE.PerspectiveCamera(
+        30,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        100,
+      );
+      camera.position.set(9.5, 7.6, 9.5);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 1.4, 0);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.06;
+      controls.enablePan = false;
+      controls.minDistance = 6;
+      controls.maxDistance = 22;
+      controls.minPolarAngle = 0.15;
+      controls.maxPolarAngle = 1.45; // stop just above the floor plane
+      controls.autoRotate = !reduceMotion;
+      controls.autoRotateSpeed = 0.5;
+
+      // Auto-rotate is the resting state; it yields to the user and resumes when idle.
+      // Under reduced-motion it never spins, so skip the idle machinery entirely.
+      if (!reduceMotion) {
+        let idleTimer;
+        controls.addEventListener('start', () => {
+          controls.autoRotate = false;
+          clearTimeout(idleTimer);
+        });
+        controls.addEventListener('end', () => {
+          clearTimeout(idleTimer);
+          idleTimer = setTimeout(() => (controls.autoRotate = true), 3500);
+        });
+      }
+
+      // ---- lighting -------------------------------------------------------------
+      scene.add(new THREE.HemisphereLight(0xc6cff2, 0x4a4030, 0.5));
+
+      const key = new THREE.DirectionalLight(0xfff2e0, 2.5);
+      key.position.set(6, 10, 5);
+      key.castShadow = true;
+      key.shadow.mapSize.set(1024, 1024); // plenty at this orbit distance; quarters the per-frame shadow pass
+      key.shadow.camera.near = 1;
+      key.shadow.camera.far = 30;
+      key.shadow.camera.left = -8;
+      key.shadow.camera.right = 8;
+      key.shadow.camera.top = 8;
+      key.shadow.camera.bottom = -8;
+      key.shadow.bias = -0.0004;
+      key.shadow.normalBias = 0.02;
+      scene.add(key);
+
+      const fill = new THREE.DirectionalLight(0x9fb4ff, 0.55);
+      fill.position.set(-6, 4, -2);
+      scene.add(fill);
+
+      // ---- build helpers --------------------------------------------------------
+      const mat = (color, o = {}) =>
+        new THREE.MeshStandardMaterial({
+          color,
+          roughness: o.roughness ?? 0.78,
+          metalness: o.metalness ?? 0,
+          flatShading: o.flatShading ?? false,
+          emissive: o.emissive ?? 0x000000,
+          emissiveIntensity: o.emissiveIntensity ?? 1,
+          transparent: o.transparent ?? false,
+          opacity: o.opacity ?? 1,
+        });
+
+      // Every box is a rounded box — the soft clay bevel is the whole look.
+      function box(w, h, d, material, { cast = true, receive = true, radius } = {}) {
+        const min = Math.min(w, h, d);
+        const r = Math.min(radius ?? min * 0.22, min * 0.49);
+        const m = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 4, r), material);
+        m.castShadow = cast;
+        m.receiveShadow = receive;
+        return m;
+      }
+      function capsule(r, len, material, seg = 14) {
+        const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 8, seg), material);
+        m.castShadow = true;
+        m.receiveShadow = true;
+        return m;
+      }
+      function lathe(points, material, seg = 40) {
+        const pts = points.map(([x, y]) => new THREE.Vector2(x, y));
+        const m = new THREE.Mesh(new THREE.LatheGeometry(pts, seg), material);
+        m.castShadow = true;
+        m.receiveShadow = true;
+        return m;
+      }
+      function cyl(rt, rb, h, material, seg = 24) {
+        const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), material);
+        m.castShadow = true;
+        m.receiveShadow = true;
+        return m;
+      }
+      function sphere(r, material, seg = 24) {
+        const m = new THREE.Mesh(new THREE.SphereGeometry(r, seg, seg), material);
+        m.castShadow = true;
+        m.receiveShadow = true;
+        return m;
+      }
+      const place = (mesh, x, y, z) => (mesh.position.set(x, y, z), mesh);
+      // a flat, fully-rounded slab (rounded rectangle extruded thin) — the skateboard deck
+      function roundedSlab(len, wid, thick, radius, material) {
+        const x = len / 2,
+          y = wid / 2,
+          r = Math.min(radius, y - 0.001);
+        const s = new THREE.Shape();
+        s.moveTo(-x + r, -y);
+        s.lineTo(x - r, -y);
+        s.quadraticCurveTo(x, -y, x, -y + r);
+        s.lineTo(x, y - r);
+        s.quadraticCurveTo(x, y, x - r, y);
+        s.lineTo(-x + r, y);
+        s.quadraticCurveTo(-x, y, -x, y - r);
+        s.lineTo(-x, -y + r);
+        s.quadraticCurveTo(-x, -y, -x + r, -y);
+        const geo = new THREE.ExtrudeGeometry(s, {
+          depth: thick,
+          bevelEnabled: true,
+          bevelThickness: thick * 0.4,
+          bevelSize: thick * 0.4,
+          bevelSegments: 2,
+          curveSegments: 16,
+        });
+        geo.rotateX(-Math.PI / 2);
+        geo.center();
+        const m = new THREE.Mesh(geo, material);
+        m.castShadow = true;
+        m.receiveShadow = true;
+        return m;
+      }
+
+      const room = new THREE.Group();
+      scene.add(room);
+
+      // ---- base, floor, rug, walls ----------------------------------------------
+      // stepped platform the whole diorama sits on
+      room.add(place(box(9.2, 0.5, 9.2, mat(C.baseRim)), 0, -0.55, 0));
+      room.add(place(box(8.2, 0.4, 8.2, mat(C.baseTop)), 0, -0.2, 0));
+
+      const floor = new THREE.Group();
+      for (let i = 0; i < 8; i++) {
+        const plank = box(7.6, 0.08, 0.92, mat(i % 2 ? C.floorAlt : C.floor), { cast: false });
+        plank.position.set(0, 0, -3.5 + 0.5 + i * 0.95);
+        floor.add(plank);
+      }
+      room.add(floor);
+
+      // rug
+      const rug = box(4.8, 0.05, 3.7, mat(C.rug, { roughness: 0.95 }), { cast: false });
+      rug.position.set(-0.1, 0.07, 0.7);
+      room.add(rug);
+      const rugInner = box(4.2, 0.06, 3.1, mat(C.rugTrim, { roughness: 0.95 }), { cast: false });
+      rugInner.position.set(-0.1, 0.08, 0.7);
+      room.add(rugInner);
+
+      // walls (left + back), thin slabs meeting at the far corner
+      const backWall = box(7.8, 5.2, 0.3, mat(C.wallBack));
+      backWall.position.set(0, 2.5, -3.75);
+      room.add(backWall);
+      const leftWall = box(0.3, 5.2, 7.8, mat(C.wallLeft));
+      leftWall.position.set(-3.75, 2.5, 0);
+      room.add(leftWall);
+
+      // recessed accent panel on the back wall (stands in for the "01 basics" poster)
+      const panel = box(2.0, 2.6, 0.08, mat(C.panel, { roughness: 0.6 }));
+      panel.position.set(1.7, 3.0, -3.58);
+      room.add(panel);
+      // a geometric "01" on the poster — a nod to the reference's "01 basics"
+      const zero = new THREE.Mesh(
+        new THREE.TorusGeometry(0.22, 0.07, 16, 32),
+        mat(C.cream, { roughness: 0.5 }),
+      );
+      zero.castShadow = true;
+      zero.position.set(1.45, 3.45, -3.5);
+      zero.scale.y = 1.25;
+      room.add(zero);
+      const one = box(0.12, 0.62, 0.1, mat(C.cream, { roughness: 0.5 }), { radius: 0.04 });
+      one.position.set(1.98, 3.45, -3.5);
+      room.add(one);
+
+      // ---- arcade machine (left, against back wall) -----------------------------
+      function makeArcade() {
+        const g = new THREE.Group();
+        const body = mat(C.brisk);
+        const trim = mat(C.cream);
+        const dark = mat(C.slate);
+        const screenMat = mat(C.screen, {
+          emissive: C.screen,
+          emissiveIntensity: 0.7,
+          roughness: 0.35,
+        });
+        // upright cabinet + slim overhanging marquee with a glowing art strip
+        g.add(place(box(1.3, 2.5, 0.95, body, { radius: 0.07 }), 0, 1.55, 0));
+        g.add(place(box(1.38, 0.4, 1.0, trim, { radius: 0.05 }), 0, 2.95, 0.02));
+        g.add(
+          place(
+            box(
+              1.16,
+              0.26,
+              0.05,
+              mat(C.briskLite, { emissive: C.briskLite, emissiveIntensity: 0.5 }),
+              { radius: 0.02 },
+            ),
+            0,
+            2.95,
+            0.5,
+          ),
+        );
+        // a prominent, near-upright CRT framed by a dark bezel
+        const bezel = box(1.06, 0.92, 0.12, dark, { radius: 0.06 });
+        bezel.position.set(0, 2.3, 0.4);
+        bezel.rotation.x = -0.05;
+        g.add(bezel);
+        const screen = box(0.88, 0.74, 0.05, screenMat, { radius: 0.04 });
+        screen.position.set(0, 2.31, 0.46);
+        screen.rotation.x = -0.05;
+        g.add(screen);
+        // control deck juts out below the screen with an angled top, joystick + buttons
+        g.add(place(box(1.24, 0.44, 0.55, body, { radius: 0.06 }), 0, 1.45, 0.5));
+        const deckTop = box(1.16, 0.08, 0.46, trim, { radius: 0.03 });
+        deckTop.position.set(0, 1.59, 0.58);
+        deckTop.rotation.x = 0.42;
+        g.add(deckTop);
+        const jbase = cyl(0.07, 0.08, 0.04, dark, 18);
+        jbase.position.set(-0.4, 1.63, 0.6);
+        jbase.rotation.x = 0.42;
+        g.add(jbase);
+        const jstick = cyl(0.025, 0.03, 0.2, dark, 12);
+        jstick.position.set(-0.4, 1.71, 0.56);
+        jstick.rotation.x = 0.42;
+        g.add(jstick);
+        g.add(place(sphere(0.06, mat(C.amber, { roughness: 0.4 })), -0.4, 1.8, 0.52));
+        [C.amber, C.green, C.briskLite].forEach((col, i) => {
+          const b = cyl(0.05, 0.05, 0.04, mat(col, { roughness: 0.4 }), 16);
+          b.position.set(-0.04 + i * 0.18, 1.67, 0.6);
+          b.rotation.x = 0.42;
+          g.add(b);
+        });
+        // a trim line + coin door dress the lower cabinet (no more dark recess)
+        g.add(place(box(1.28, 0.04, 0.04, mat(C.briskLite), { radius: 0.01 }), 0, 1.22, 0.47));
+        g.add(place(box(0.5, 0.3, 0.05, mat(C.creamDim), { radius: 0.03 }), 0, 0.92, 0.46));
+        for (const sx of [-0.1, 0.1]) {
+          g.add(place(box(0.05, 0.12, 0.04, dark, { radius: 0.01 }), sx, 0.97, 0.49));
+        }
+        // wider kickplate base
+        g.add(place(box(1.34, 0.42, 0.99, mat(C.briskLite), { radius: 0.05 }), 0, 0.26, 0));
+        return { node: g, screenMat };
+      }
+      const arcade = makeArcade();
+      arcade.node.position.set(-2.5, 0, -1.45);
+      arcade.node.rotation.y = 0.5;
+      room.add(arcade.node);
+
+      // ---- shelves on the left wall ---------------------------------------------
+      function makeShelf(y, z) {
+        const s = box(0.5, 0.08, 3.0, mat(C.creamDim));
+        s.position.set(-3.35, y, z);
+        room.add(s);
+        return y + 0.04; // return the top surface height
+      }
+      const shelfLoTop = makeShelf(2.45, 1.0);
+      const shelfHiTop = makeShelf(3.5, 1.0);
+
+      // a solid faceted cube resting on the lower shelf
+      const gemCube = box(0.46, 0.46, 0.46, mat(C.brisk, { roughness: 0.4 }), { radius: 0.06 });
+      gemCube.position.set(-3.2, shelfLoTop + 0.23, 0.0);
+      gemCube.rotation.y = 0.5;
+      room.add(gemCube);
+
+      // a solid octahedron crystal, hovering + slowly spinning above the upper shelf
+      const gemOcta = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.34),
+        mat(C.green, { flatShading: true, roughness: 0.45 }),
+      );
+      gemOcta.castShadow = true;
+      gemOcta.position.set(-3.18, shelfHiTop + 0.42, 1.0);
+      room.add(gemOcta);
+
+      // sphere cluster (a little molecule of accent colors), resting on the lower shelf
+      const cluster = new THREE.Group();
+      const clusterCols = [C.amber, C.green, C.brisk, C.briskLite, C.wallBack];
+      const offs = [
+        [0, 0.16, 0],
+        [0.24, 0.13, 0.07],
+        [-0.2, 0.14, -0.1],
+        [0.05, 0.36, -0.1],
+        [-0.07, 0.13, 0.22],
+        [0.2, 0.12, -0.17],
+      ];
+      offs.forEach((o, i) => {
+        const s = sphere(0.15, mat(clusterCols[i % clusterCols.length], { roughness: 0.45 }), 18);
+        s.position.set(...o);
+        cluster.add(s);
+      });
+      cluster.position.set(-3.12, shelfLoTop, 1.8);
+      room.add(cluster);
+
+      // ---- desk (center-right, against back wall) -------------------------------
+      function makeDesk() {
+        const g = new THREE.Group();
+        const top = box(3.0, 0.12, 1.4, mat(C.cream));
+        top.position.set(0, 1.5, 0);
+        g.add(top);
+        for (const [x, z] of [
+          [-1.35, -0.55],
+          [1.35, -0.55],
+          [-1.35, 0.55],
+          [1.35, 0.55],
+        ]) {
+          const leg = cyl(0.05, 0.05, 1.5, mat(C.creamDim), 12);
+          leg.position.set(x, 0.75, z);
+          g.add(leg);
+        }
+        // laptop
+        const screenMat = mat(C.screen, {
+          emissive: C.briskLite,
+          emissiveIntensity: 0.7,
+          roughness: 0.35,
+        });
+        const lidPivot = new THREE.Group();
+        const lid = box(1.1, 0.72, 0.05, mat(C.slate));
+        lid.position.set(0, 0.36, 0);
+        lidPivot.add(lid);
+        const display = box(1.0, 0.62, 0.03, screenMat);
+        display.position.set(0, 0.36, 0.04);
+        lidPivot.add(display);
+        lidPivot.position.set(-0.55, 1.56, -0.3);
+        lidPivot.rotation.x = -0.28;
+        g.add(lidPivot);
+        const base = box(1.1, 0.06, 0.7, mat(C.creamDim));
+        base.position.set(-0.55, 1.58, 0.06);
+        g.add(base);
+        // mousepad + keyboard hint
+        const pad = box(0.9, 0.02, 0.5, mat(C.brisk, { roughness: 0.9 }));
+        pad.position.set(0.7, 1.57, 0.2);
+        g.add(pad);
+        g.add(place(box(0.7, 0.04, 0.28, mat(C.slate)), 0.7, 1.59, 0.18));
+        // headphones resting on the desk
+        const hp = new THREE.Group();
+        const band = new THREE.Mesh(
+          new THREE.TorusGeometry(0.26, 0.045, 12, 28, Math.PI),
+          mat(C.slate),
+        );
+        band.castShadow = true;
+        band.position.y = 0.26;
+        hp.add(band);
+        for (const x of [-0.26, 0.26])
+          hp.add(place(cyl(0.12, 0.12, 0.1, mat(C.amber), 18), x, 0.1, 0));
+        hp.position.set(1.15, 1.56, -0.3);
+        hp.rotation.y = 0.4;
+        g.add(hp);
+        return { node: g, screenMat };
+      }
+      const desk = makeDesk();
+      desk.node.position.set(0.5, 0, -2.5);
+      room.add(desk.node);
+
+      // potted cactus on the desk
+      function makeCactus() {
+        const g = new THREE.Group();
+        // curved, tapered pot turned on a lathe
+        const pot = lathe(
+          [
+            [0.0, 0.0],
+            [0.17, 0.0],
+            [0.2, 0.05],
+            [0.22, 0.3],
+            [0.25, 0.38],
+            [0.23, 0.4],
+            [0.2, 0.39],
+          ],
+          mat(C.cream),
+        );
+        g.add(pot);
+        g.add(place(cyl(0.2, 0.2, 0.04, mat(0x6f5d40, { roughness: 1 }), 24), 0, 0.36, 0)); // soil
+        const arms = new THREE.Group();
+        const trunk = capsule(0.14, 0.62, mat(C.green));
+        trunk.position.y = 0.74;
+        arms.add(trunk);
+        const armL = capsule(0.075, 0.24, mat(C.green));
+        armL.position.set(-0.16, 0.78, 0);
+        armL.rotation.z = 0.6;
+        arms.add(armL);
+        const armR = capsule(0.07, 0.2, mat(C.green));
+        armR.position.set(0.16, 0.66, 0);
+        armR.rotation.z = -0.6;
+        arms.add(armR);
+        g.add(arms);
+        return { node: g, arms };
+      }
+      const cactus = makeCactus();
+      cactus.node.position.set(1.7, 1.56, -2.2);
+      room.add(cactus.node);
+
+      // ---- office chair (in front of the desk) ----------------------------------
+      function makeChair() {
+        const g = new THREE.Group();
+        const seat = box(0.95, 0.18, 0.9, mat(C.amber));
+        seat.position.y = 1.1;
+        g.add(seat);
+        const back = box(0.95, 1.1, 0.2, mat(C.amber));
+        back.position.set(0, 1.7, -0.42);
+        back.rotation.x = -0.12;
+        g.add(back);
+        g.add(place(cyl(0.08, 0.08, 0.7, mat(C.slate), 14), 0, 0.72, 0)); // post
+        const star = new THREE.Group();
+        for (let i = 0; i < 5; i++) {
+          const leg = box(0.5, 0.07, 0.12, mat(C.creamDim));
+          leg.position.set(
+            Math.cos((i / 5) * Math.PI * 2) * 0.28,
+            0,
+            Math.sin((i / 5) * Math.PI * 2) * 0.28,
+          );
+          leg.rotation.y = -(i / 5) * Math.PI * 2;
+          star.add(leg);
+          const wheel = cyl(0.07, 0.07, 0.08, mat(C.slate), 12);
+          wheel.rotation.z = Math.PI / 2;
+          wheel.position.set(
+            Math.cos((i / 5) * Math.PI * 2) * 0.5,
+            -0.05,
+            Math.sin((i / 5) * Math.PI * 2) * 0.5,
+          );
+          star.add(wheel);
+        }
+        star.position.y = 0.4;
+        g.add(star);
+        return g;
+      }
+      const chair = makeChair();
+      chair.position.set(0.4, -0.22, -1.0); // drop the caster base onto the floor
+      chair.rotation.y = 0.25;
+      room.add(chair);
+
+      // ---- skateboard on the rug ------------------------------------------------
+      function makeSkateboard() {
+        const g = new THREE.Group();
+        // one continuous popsicle deck with fully rounded ends
+        g.add(roundedSlab(1.7, 0.42, 0.05, 0.21, mat(C.brisk, { roughness: 0.5 })));
+        const grip = roundedSlab(1.56, 0.34, 0.014, 0.17, mat(C.slate, { roughness: 0.95 }));
+        grip.position.y = 0.05;
+        g.add(grip);
+        // trucks + orange wheels
+        for (const x of [-0.56, 0.56]) {
+          g.add(place(box(0.1, 0.05, 0.3, mat(C.slate), { radius: 0.02 }), x, -0.07, 0));
+          for (const z of [-0.17, 0.17]) {
+            const w = cyl(0.09, 0.09, 0.08, mat(C.amber, { roughness: 0.4 }), 18);
+            w.rotation.x = Math.PI / 2;
+            w.position.set(x, -0.11, z);
+            g.add(w);
+          }
+        }
+        return g;
+      }
+      const board = makeSkateboard();
+      board.position.set(-0.2, 0.31, 1.55); // wheels rest on the rug surface (y=0.11)
+      board.rotation.y = 0.62;
+      room.add(board);
+
+      // ---- bulldog in a bowl (front-right) --------------------------------------
+      function makeDog() {
+        const g = new THREE.Group();
+        // curved bed/bowl on a lathe, with a raised rim
+        const bed = lathe(
+          [
+            [0.0, 0.04],
+            [0.5, 0.03],
+            [0.6, 0.06],
+            [0.64, 0.24],
+            [0.6, 0.28],
+            [0.52, 0.25],
+            [0.48, 0.08],
+            [0.0, 0.06],
+          ],
+          mat(C.green, { roughness: 0.9 }),
+        );
+        g.add(bed);
+        const body = new THREE.Group();
+        const torso = sphere(0.42, mat(C.slate, { roughness: 0.85 }));
+        torso.scale.set(1.1, 0.85, 1.3);
+        torso.position.y = 0.5;
+        body.add(torso);
+        const head = sphere(0.3, mat(C.slate, { roughness: 0.85 }));
+        head.position.set(0, 0.62, 0.42);
+        head.scale.set(1.1, 0.95, 0.9);
+        body.add(head);
+        // ears
+        for (const x of [-0.18, 0.18]) {
+          const ear = box(0.14, 0.18, 0.06, mat(C.slate));
+          ear.position.set(x, 0.88, 0.4);
+          body.add(ear);
+        }
+        // muzzle + collar
+        body.add(place(sphere(0.14, mat(0x39435a, { roughness: 0.8 })), 0, 0.55, 0.66));
+        const collar = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.04, 10, 24), mat(C.amber));
+        collar.position.set(0, 0.5, 0.38);
+        collar.rotation.x = 1.2;
+        body.add(collar);
+        body.position.y = 0.04;
+        g.add(body);
+        return { node: g, body };
+      }
+      const dog = makeDog();
+      dog.node.position.set(2.5, 0, 1.7);
+      dog.node.rotation.y = -0.6;
+      room.add(dog.node);
+
+      // ---- ambient motion + render loop -----------------------------------------
+      const clock = new THREE.Clock();
+      function tick() {
+        const t = clock.getElapsedTime();
+        // Ambient motion is decorative — hold the scene still under reduced-motion.
+        if (!reduceMotion) {
+          gemOcta.rotation.y = t * 0.5;
+          gemOcta.rotation.x = t * 0.3;
+          cactus.arms.rotation.z = Math.sin(t * 1.2) * 0.03;
+          dog.body.scale.y = 1 + Math.sin(t * 1.6) * 0.015; // breathing
+          arcade.screenMat.emissiveIntensity = 0.7 + Math.sin(t * 8) * 0.12; // crt flicker
+          desk.screenMat.emissiveIntensity = 0.6 + Math.sin(t * 2.3) * 0.08;
+        }
+        controls.update();
+        renderer.render(scene, camera);
+        requestAnimationFrame(tick);
+      }
+      tick();
+
+      addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    </script>
+  </body>
+</html>
