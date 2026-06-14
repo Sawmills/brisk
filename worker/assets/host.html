@@ -52,12 +52,29 @@
       </p>
 
       <ul class="toc">
+        <li><a href="#how">how it works</a></li>
         <li><a href="#setup">stand it up</a></li>
         <li><a href="#subdomains">wildcard subdomains</a></li>
         <li><a href="#login">google login</a></li>
+        <li><a href="#visibility">public demo mode</a></li>
         <li><a href="#ai">ai keys</a></li>
         <li><a href="#cost">cost</a></li>
       </ul>
+
+      <h2 id="how"><a href="#how">How it works</a></h2>
+      <p>
+        Every request to every site hits a single Cloudflare Worker. It reads the site from the
+        subdomain (or a <code>/s/&lt;name&gt;/</code> path), then either streams that site's static
+        files straight from R2, or — for <code>brisk.*</code> calls under <code>/api/</code> — talks
+        to the backing primitives: D1 for the database, R2 for uploads, a Durable Object per site
+        for realtime, and a server-side key for AI. An optional Google OAuth gate sits in front;
+        with it off, every visitor is a trusted dev user.
+      </p>
+      <img
+        class="diagram"
+        src="/architecture.png"
+        alt="Brisk architecture: site subdomains pass through optional Google OAuth into one Cloudflare Worker, which serves static files from R2 and routes /api/* to D1, R2, Durable Objects, the AI proxy, identity, and hosting."
+      />
 
       <h2 id="setup"><a href="#setup">Stand it up</a></h2>
       <p>
@@ -139,6 +156,46 @@ npx wrangler secret put DEPLOY_TOKEN       # optional, for CI</code></pre>
         <code>DEPLOY_TOKEN</code> secret is the CI credential (<code>BRISK_TOKEN</code>, shows up as
         <code>ci@brisk</code>). The default <code>"AUTH": "none"</code> skips all of this and treats
         every visitor as a trusted dev user — only do that on a network you trust.
+      </p>
+
+      <h2 id="visibility"><a href="#visibility">Public demo mode</a></h2>
+      <p>
+        Instances are private by default — everything needs a login. To let strangers
+        <em>see</em> your sites without being able to touch them, set
+        <code>VISIBILITY=public</code> alongside <code>AUTH=google</code>.
+      </p>
+      <ul>
+        <li>
+          <strong>Visitors (no login)</strong> can browse the dashboard, the docs, and every
+          deployed site. Their static requests are edge-cached (<code>max-age=300</code>), so a busy
+          demo costs almost no R2/D1 operations — the trade-off is a deploy can take up to five
+          minutes to reach signed-out eyes.
+        </li>
+        <li>
+          <strong>Everything else is a 401 for visitors</strong> — the database (reads included),
+          AI, uploads, websockets, deploys, and CLI token minting. Demo pages render; their
+          <code>brisk.*</code> calls fail fast, so build demos to degrade gracefully.
+        </li>
+        <li>
+          <strong>Members</strong> (whoever passes your allowlist) sign in and get the full,
+          uncached platform.
+        </li>
+      </ul>
+      <p>
+        The API has no rate limiting, so before publishing spend two minutes in the Cloudflare
+        dashboard on your zone — both are free and stop abusive traffic before it bills as Worker
+        requests:
+      </p>
+      <ul>
+        <li>
+          <strong>Security&nbsp;→ WAF&nbsp;→ Rate limiting</strong>: one rule on your host, e.g.
+          block for 10&nbsp;s when an IP exceeds ~100 requests.
+        </li>
+        <li><strong>Security&nbsp;→ Bots</strong>: enable Bot Fight Mode.</li>
+      </ul>
+      <p>
+        And leave <code>DEPLOY_TOKEN</code> unset unless you actually have CI — an unset secret
+        means that auth path doesn't exist at all.
       </p>
 
       <h2 id="ai"><a href="#ai">AI keys</a></h2>

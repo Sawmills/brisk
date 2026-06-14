@@ -320,6 +320,8 @@ to another, purely as a convenience (it's all one happy trust bubble).
 
 The whole platform is one Worker and four Cloudflare primitives:
 
+![Brisk architecture: site subdomains pass through optional Google OAuth into one Cloudflare Worker, which serves static files from R2 and routes /api/* to D1, R2, Durable Objects, the AI proxy, identity, and hosting.](worker/assets/architecture.png)
+
 ```
 foo.brisk.example.com ─┐
 bar.brisk.example.com ─┤→ Worker ──→ /s/… static files ──→ R2  (versioned deploys)
