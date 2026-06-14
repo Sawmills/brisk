@@ -55,7 +55,7 @@ function render(filter = '') {
       const files = cell('meta files', `${site.files} files`);
       const size = cell('meta size', humanBytes(site.bytes));
       const when = cell('meta', timeAgo(site.updatedAt));
-      const by = cell('meta by', site.updatedBy ? site.updatedBy.split('@')[0] : '');
+      const by = cell('meta by', site.updatedBy ?? '');
       by.title = site.updatedBy ?? '';
 
       const copy = document.createElement('button');

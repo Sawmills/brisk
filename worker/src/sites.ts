@@ -142,7 +142,8 @@ export async function deploySite(
        updated_by = excluded.updated_by
      RETURNING *`,
   )
-    .bind(site, deploy, files.length, bytes, now, now, user.email)
+    // Attribute to the human name; auth already falls it back to the email.
+    .bind(site, deploy, files.length, bytes, now, now, user.name)
     .first<SiteRow>();
   pointerCache.delete(site);
 
