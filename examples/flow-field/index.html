@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>flow field</title>
+    <style>
+      body {
+        font:
+          16px/1.6 ui-monospace,
+          Menlo,
+          monospace;
+        margin: 0;
+        background: oklch(16% 0.012 270);
+        color: oklch(89% 0.012 270);
+        overflow: hidden;
+      }
+      canvas {
+        position: fixed;
+        inset: 0;
+        /* replaced elements don't stretch from inset alone; without this the
+           dpr-scaled backing store renders at intrinsic size on retina */
+        width: 100%;
+        height: 100%;
+        display: block;
+        touch-action: none;
+      }
+      #overlay {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        pointer-events: none;
+        transition: opacity 1.8s ease;
+      }
+      #overlay.faded {
+        opacity: 0;
+      }
+      h1 {
+        font-weight: 400;
+        font-size: 1.5rem;
+        letter-spacing: 0.05em;
+        margin: 0 0 0.4rem;
+      }
+      #overlay p {
+        margin: 0;
+        font-size: 0.85rem;
+        color: oklch(68% 0.015 270);
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <div id="overlay">
+      <div>
+        <h1>flow field</h1>
+        <p>move to stir &middot; click to reseed</p>
+      </div>
+    </div>
+
+    <script>
+      const TAU = Math.PI * 2;
+      const CELL = 22; // field grid resolution in CSS px
+      const BUCKETS = 12; // particles batch into one stroke per color
+      const SPEED = 1.3;
+      const STEER = 0.1;
+      const REPEL_R = 140;
+
+      const canvas = document.getElementById('c');
+      const ctx = canvas.getContext('2d');
+
+      // --- value noise (3rd dimension is time, so the field drifts) ---
+      const perm = new Uint8Array(512);
+      function shuffle() {
+        const p = new Uint8Array(256);
+        for (let i = 0; i < 256; i++) p[i] = i;
+        for (let i = 255; i > 0; i--) {
+          const j = (Math.random() * (i + 1)) | 0;
+          const t = p[i];
+          p[i] = p[j];
+          p[j] = t;
+        }
+        for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
+      }
+      function noise3(x, y, z) {
+        const xi = Math.floor(x);
+        const yi = Math.floor(y);
+        const zi = Math.floor(z);
+        const xf = x - xi;
+        const yf = y - yi;
+        const zf = z - zi;
+        const u = xf * xf * (3 - 2 * xf);
+        const v = yf * yf * (3 - 2 * yf);
+        const w = zf * zf * (3 - 2 * zf);
+        const px0 = perm[xi & 255];
+        const px1 = perm[(xi + 1) & 255];
+        const y0 = yi & 255;
+        const y1 = (yi + 1) & 255;
+        const z0 = zi & 255;
+        const z1 = (zi + 1) & 255;
+        const a00 = perm[px0 + y0];
+        const a10 = perm[px1 + y0];
+        const a01 = perm[px0 + y1];
+        const a11 = perm[px1 + y1];
+        const x00 = perm[a00 + z0] + (perm[a10 + z0] - perm[a00 + z0]) * u;
+        const x10 = perm[a01 + z0] + (perm[a11 + z0] - perm[a01 + z0]) * u;
+        const x01 = perm[a00 + z1] + (perm[a10 + z1] - perm[a00 + z1]) * u;
+        const x11 = perm[a01 + z1] + (perm[a11 + z1] - perm[a01 + z1]) * u;
+        return (
+          (x00 + (x10 - x00) * v + (x01 + (x11 - x01) * v - (x00 + (x10 - x00) * v)) * w) / 255
+        );
+      }
+
+      // --- palette: hue/lightness follow flow direction, so streams read as layers ---
+      let hueBase = 0;
+      let colors = [];
+      let bgFill = '';
+      let fadeFill = '';
+      function reseed() {
+        shuffle();
+        hueBase = Math.random() * 360;
+        colors = [];
+        for (let b = 0; b < BUCKETS; b++) {
+          const a = ((b + 0.5) / BUCKETS) * TAU;
+          const l = (72 + Math.sin(a) * 7).toFixed(1);
+          const h = (hueBase + Math.cos(a) * 30).toFixed(1);
+          colors.push(`oklch(${l}% 0.11 ${h} / 0.5)`);
+        }
+        bgFill = `oklch(16% 0.014 ${hueBase.toFixed(1)})`;
+        // low alpha so old trails wash out over ~a second
+        fadeFill = `oklch(16% 0.014 ${hueBase.toFixed(1)} / 0.07)`;
+      }
+
+      // --- field grid + particles, rebuilt on resize ---
+      let w, h, cols, rows, fieldX, fieldY;
+      let count, x, y, vx, vy, life, sp;
+      let segs, segCount;
+      function resize() {
+        const dpr = Math.min(devicePixelRatio || 1, 2);
+        w = innerWidth;
+        h = innerHeight;
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.lineWidth = 1;
+        cols = Math.ceil(w / CELL) + 2;
+        rows = Math.ceil(h / CELL) + 2;
+        fieldX = new Float32Array(cols * rows);
+        fieldY = new Float32Array(cols * rows);
+        count = Math.min(3200, Math.max(600, Math.round((w * h) / 480)));
+        x = new Float32Array(count);
+        y = new Float32Array(count);
+        vx = new Float32Array(count);
+        vy = new Float32Array(count);
+        life = new Float32Array(count);
+        sp = new Float32Array(count);
+        for (let i = 0; i < count; i++) spawn(i);
+        segs = [];
+        segCount = new Int32Array(BUCKETS);
+        for (let b = 0; b < BUCKETS; b++) segs.push(new Float32Array(count * 4));
+        ctx.fillStyle = bgFill;
+        ctx.fillRect(0, 0, w, h);
+      }
+      function spawn(i) {
+        x[i] = Math.random() * w;
+        y[i] = Math.random() * h;
+        vx[i] = 0;
+        vy[i] = 0;
+        life[i] = 100 + Math.random() * 400;
+        sp[i] = 0.6 + Math.random() * 0.8;
+      }
+
+      // --- pointer: hover/drag repels, a quick tap reseeds ---
+      let mx = -1e9;
+      let my = -1e9;
+      let downX = 0;
+      let downY = 0;
+      let downT = 0;
+      let fadeTimer = 0;
+      function scheduleFade() {
+        if (fadeTimer) return;
+        fadeTimer = setTimeout(
+          () => document.getElementById('overlay').classList.add('faded'),
+          2600,
+        );
+      }
+      addEventListener('pointermove', (e) => {
+        mx = e.clientX;
+        my = e.clientY;
+        scheduleFade();
+      });
+      addEventListener('pointerdown', (e) => {
+        mx = downX = e.clientX;
+        my = downY = e.clientY;
+        downT = performance.now();
+        scheduleFade();
+      });
+      addEventListener('pointerup', (e) => {
+        const moved = Math.hypot(e.clientX - downX, e.clientY - downY);
+        if (moved < 10 && performance.now() - downT < 500) reseed();
+        if (e.pointerType !== 'mouse') mx = my = -1e9; // no hover after touch lifts
+      });
+      // leave events don't bubble to window, so listen on document
+      document.addEventListener('pointerleave', () => (mx = my = -1e9));
+      addEventListener('resize', resize);
+
+      reseed();
+      resize();
+
+      let t = Math.random() * 100;
+      let lastTs = 0;
+      function frame(ts) {
+        requestAnimationFrame(frame);
+        const dt = Math.min((ts - lastTs) / 1000 || 0.016, 0.05);
+        lastTs = ts;
+        const dt60 = dt * 60;
+        t += dt * 0.07;
+
+        // sample the noise once per grid cell, not per particle
+        const step = CELL * 0.002;
+        for (let gy = 0, i = 0; gy < rows; gy++) {
+          const ny = gy * step;
+          for (let gx = 0; gx < cols; gx++, i++) {
+            const nx = gx * step;
+            const n =
+              noise3(nx, ny, t) * 0.65 + noise3(nx * 2.6 + 31.4, ny * 2.6 + 17.7, t * 1.7) * 0.35;
+            const a = n * TAU * 2;
+            fieldX[i] = Math.cos(a);
+            fieldY[i] = Math.sin(a);
+          }
+        }
+
+        segCount.fill(0);
+        const invCell = 1 / CELL;
+        const maxG = cols - 1.001;
+        const maxGy = rows - 1.001;
+        for (let i = 0; i < count; i++) {
+          life[i] -= dt60;
+          if (life[i] <= 0 || x[i] < -2 || x[i] > w + 2 || y[i] < -2 || y[i] > h + 2) {
+            spawn(i);
+            continue;
+          }
+          const ox = x[i];
+          const oy = y[i];
+
+          // bilinear field sample
+          let gx = ox * invCell;
+          let gy = oy * invCell;
+          if (gx < 0) gx = 0;
+          else if (gx > maxG) gx = maxG;
+          if (gy < 0) gy = 0;
+          else if (gy > maxGy) gy = maxGy;
+          const ix = gx | 0;
+          const iy = gy | 0;
+          const fx = gx - ix;
+          const fy = gy - iy;
+          const i00 = iy * cols + ix;
+          const i01 = i00 + cols;
+          const tx0 = fieldX[i00] + (fieldX[i00 + 1] - fieldX[i00]) * fx;
+          const tx1 = fieldX[i01] + (fieldX[i01 + 1] - fieldX[i01]) * fx;
+          const ty0 = fieldY[i00] + (fieldY[i00 + 1] - fieldY[i00]) * fx;
+          const ty1 = fieldY[i01] + (fieldY[i01 + 1] - fieldY[i01]) * fx;
+          const fvx = tx0 + (tx1 - tx0) * fy;
+          const fvy = ty0 + (ty1 - ty0) * fy;
+
+          const s = SPEED * sp[i];
+          vx[i] += (fvx * s - vx[i]) * STEER * dt60;
+          vy[i] += (fvy * s - vy[i]) * STEER * dt60;
+
+          const dx = ox - mx;
+          const dy = oy - my;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < REPEL_R * REPEL_R && d2 > 1) {
+            const d = Math.sqrt(d2);
+            const f = ((1 - d / REPEL_R) * (1 - d / REPEL_R) * 1.4 * dt60) / d;
+            vx[i] += dx * f;
+            vy[i] += dy * f;
+          }
+
+          x[i] = ox + vx[i] * dt60;
+          y[i] = oy + vy[i] * dt60;
+
+          let b = ((Math.atan2(vy[i], vx[i]) / TAU + 0.5) * BUCKETS) | 0;
+          if (b >= BUCKETS) b = BUCKETS - 1;
+          const sb = segs[b];
+          const n = segCount[b];
+          sb[n] = ox;
+          sb[n + 1] = oy;
+          sb[n + 2] = x[i];
+          sb[n + 3] = y[i];
+          segCount[b] = n + 4;
+        }
+
+        ctx.fillStyle = fadeFill;
+        ctx.fillRect(0, 0, w, h);
+        for (let b = 0; b < BUCKETS; b++) {
+          const n = segCount[b];
+          if (!n) continue;
+          ctx.strokeStyle = colors[b];
+          ctx.beginPath();
+          const sb = segs[b];
+          for (let i = 0; i < n; i += 4) {
+            ctx.moveTo(sb[i], sb[i + 1]);
+            ctx.lineTo(sb[i + 2], sb[i + 3]);
+          }
+          ctx.stroke();
+        }
+      }
+      requestAnimationFrame(frame);
+    </script>
+  </body>
+</html>
