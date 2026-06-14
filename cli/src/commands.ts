@@ -16,7 +16,7 @@ import {
   type Connection,
 } from './config.js';
 import { agentsMd, briskJson, starterHtml } from './templates.js';
-import { bold, cyan, dim, green, humanBytes, timeAgo, yellow } from './ui.js';
+import { bold, cyan, dim, green, humanBytes, spinner, timeAgo, yellow } from './ui.js';
 
 export interface Flags {
   site?: string;
@@ -104,7 +104,13 @@ export async function deploy(dirArg: string | undefined, flags: Flags): Promise<
   }
 
   const started = Date.now();
-  const info = await api<SiteInfo>(conn, `/api/deploy/${site}`, { method: 'POST', body: form });
+  const spin = spinner(`Deploying ${bold(site)}…`);
+  let info: SiteInfo;
+  try {
+    info = await api<SiteInfo>(conn, `/api/deploy/${site}`, { method: 'POST', body: form });
+  } finally {
+    spin.stop();
+  }
   console.log(
     `${green('✓')} ${bold(site)} ${dim(`· ${info.files} ${info.files === 1 ? 'file' : 'files'} · ${humanBytes(info.bytes)} · ${Date.now() - started}ms`)}`,
   );
@@ -213,6 +219,7 @@ export async function login(serverArg: string | undefined, flags: Flags): Promis
     : resolveConnection({ ...flags, profile: undefined }, process.cwd()).server;
   const state = crypto.randomUUID();
 
+  let spin: { stop: () => void } | null = null;
   const result = await new Promise<{ token?: string; email?: string; open?: boolean }>(
     (resolve, reject) => {
       const timer = setTimeout(() => {
@@ -244,10 +251,11 @@ export async function login(serverArg: string | undefined, flags: Flags): Promis
         const loginUrl = `${server}/auth/cli?port=${port}&state=${state}`;
         console.log(`Opening browser… if it doesn't, visit:\n  ${cyan(loginUrl)}\n`);
         openInBrowser(loginUrl);
+        spin = spinner('Waiting for the browser…');
       });
       listener.on('error', reject);
     },
-  );
+  ).finally(() => spin?.stop());
 
   const cfg = loadGlobal();
   const name = flags.profile ?? new URL(server).hostname;
