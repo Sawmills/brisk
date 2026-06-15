@@ -19,11 +19,11 @@
     {
       "binding": "DB",
       "database_name": "brisk",
-      // Run `wrangler d1 create brisk` and paste the id here. Any value works
-      // for local dev and tests; the real id is only needed for remote deploys.
-      // To keep your real id out of git: after editing, run
-      //   git update-index --skip-worktree worker/wrangler.jsonc
-      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID",
+      // The id of the canonical instance's D1, committed so the Cloudflare Git
+      // build can deploy. It's an identifier, not a secret. Forking? Run
+      // `wrangler d1 create brisk` and replace it with your own (any value works
+      // for local dev and tests; only remote deploys need a real one).
+      "database_id": "e195c15d-0220-432b-91f3-d4f944a38459",
       "migrations_dir": "migrations"
     }
   ],
