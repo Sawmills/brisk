@@ -17,8 +17,13 @@ const googleEnv = {
 const publicEnv = { ...googleEnv, VISIBILITY: 'public' as const };
 
 async function fetchAs(authEnv: typeof env, path: string, init?: RequestInit) {
+  return fetchUrl(authEnv, `http://localhost${path}`, init);
+}
+
+/** Like fetchAs, but takes an absolute URL so tests can control the host. */
+async function fetchUrl(authEnv: typeof env, url: string, init?: RequestInit) {
   const ctx = createExecutionContext();
-  const res = await app.fetch(new Request(`http://localhost${path}`, init), authEnv, ctx);
+  const res = await app.fetch(new Request(url, init), authEnv, ctx);
   await waitOnExecutionContext(ctx);
   return res;
 }
@@ -99,6 +104,31 @@ describe('visibility=public (demo mode)', () => {
     expect(res.status).toBe(200);
   });
 
+  it('ignores x-brisk-site for static serving — no cache poisoning', async () => {
+    for (const [name, html] of [
+      ['victimsite', 'VICTIM-CONTENT'],
+      ['evilsite', 'EVIL-CONTENT'],
+    ]) {
+      const form = new FormData();
+      form.append('files', new File([html], 'index.html'));
+      await fetchAs(publicEnv, `/api/deploy/${name}`, {
+        method: 'POST',
+        headers: { authorization: 'Bearer ci-token' },
+        body: form,
+      });
+    }
+
+    // A visitor tries to serve (and cache) evil content under the victim's URL.
+    const poison = await fetchUrl(publicEnv, 'http://victimsite.localhost/', {
+      headers: { 'x-brisk-site': 'evilsite' },
+    });
+    expect(await poison.text()).toBe('VICTIM-CONTENT');
+
+    // The next, header-less visitor must not get the poisoned copy from cache.
+    const innocent = await fetchUrl(publicEnv, 'http://victimsite.localhost/');
+    expect(await innocent.text()).toBe('VICTIM-CONTENT');
+  });
+
   it('401s every dynamic surface for visitors', async () => {
     const blocked = [
       ['/api/me', {}],
@@ -152,5 +182,27 @@ describe('auth=none', () => {
     const callback = new URL(res.headers.get('location')!);
     expect(callback.searchParams.get('open')).toBe('1');
     expect(callback.searchParams.get('token')).toBeNull();
+  });
+});
+
+describe('AUTH unset (secure by default)', () => {
+  const unsetEnv = { ...env, AUTH: undefined } as unknown as typeof env;
+
+  it('fails closed on a public host', async () => {
+    const res = await fetchUrl(unsetEnv, 'https://brisk.example.com/api/me');
+    expect(res.status).toBe(503);
+  });
+
+  it('still grants the dev identity on localhost', async () => {
+    const res = await fetchUrl(unsetEnv, 'http://localhost/api/me');
+    expect(res.status).toBe(200);
+  });
+
+  it('honors an explicit AUTH=none even on a public host', async () => {
+    const res = await fetchUrl(
+      { ...env, AUTH: 'none' as const },
+      'https://brisk.example.com/api/me',
+    );
+    expect(res.status).toBe(200);
   });
 });

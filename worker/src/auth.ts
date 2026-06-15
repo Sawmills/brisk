@@ -12,6 +12,12 @@ const CLI_TOKEN_DAYS = 90;
 /** Who you are when auth is off: a trusted-network dev identity. */
 const devUser = (): User => ({ email: 'dev@localhost', name: 'Dev' });
 
+/** Hosts where an open instance is plausibly intentional (local dev). */
+function isLocalHost(host: string): boolean {
+  const h = host.split(':')[0]!.toLowerCase();
+  return h === 'localhost' || h === '127.0.0.1' || h.endsWith('.localhost');
+}
+
 /** Who you are on a VISIBILITY=public instance before signing in. */
 export const VISITOR: User = { email: 'visitor', name: 'Visitor' };
 
@@ -190,6 +196,18 @@ export function cliAuthRoute(): MiddlewareHandler<AppEnv> {
 export function auth(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     if (c.env.AUTH !== 'google') {
+      // AUTH=none is "trusted network", fine locally. But Workers are public by
+      // default, so an *unset* AUTH on a public host is almost always a forgotten
+      // config that ships an open backend. Fail closed there; require an explicit
+      // AUTH=none to run open on purpose.
+      if (!c.env.AUTH && !isLocalHost(new URL(c.req.url).host)) {
+        return c.text(
+          'Misconfigured: AUTH is not set. Set AUTH=google to require login, or ' +
+            'AUTH=none to deliberately run an open instance on a trusted network. ' +
+            'Refusing to serve an open backend on a public host.',
+          503,
+        );
+      }
       c.set('user', devUser());
       return next();
     }

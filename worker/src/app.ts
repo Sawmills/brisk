@@ -70,10 +70,15 @@ async function visitorCached(
   c: Context<AppEnv>,
   build: () => Promise<Response | null>,
   maxAge = 300,
+  cacheSite = '',
 ): Promise<Response | null> {
   if (!isVisitor(c.var.user)) return build();
   const url = new URL(c.req.raw.url);
   url.search = '';
+  // Key on the actually-served site, not just the URL. Otherwise a visitor who
+  // picks a site via x-brisk-site could cache its content under another site's
+  // URL, and the next header-less visitor would be served the poisoned copy.
+  if (cacheSite) url.searchParams.set('__site', cacheSite);
   const key = new Request(url.toString(), { method: 'GET' });
   const cache = caches.default;
   const hit = await cache.match(key);
@@ -318,7 +323,7 @@ export function createApp(): Hono<AppEnv> {
   // ---- static serving ----------------------------------------------------
 
   const serveSiteFor = (c: Context<AppEnv>, site: string, path: string): Promise<Response | null> =>
-    visitorCached(c, () => serveSite(c.env, site, path));
+    visitorCached(c, () => serveSite(c.env, site, path), 300, site);
 
   // Path mode: /s/<site>/... works on any host (workers.dev, local dev).
   app.get('/s/:site/*', async (c) => {
@@ -332,7 +337,11 @@ export function createApp(): Hono<AppEnv> {
   // assets and acts as the default `home` site until someone deploys over it.
   app.get('*', async (c) => {
     const path = new URL(c.req.url).pathname;
-    const site = c.var.site;
+    // Static page serving keys off the host (or the /s/<site>/ route above),
+    // never the x-brisk-site header. That header is only for SDK API calls;
+    // honoring it here let a visitor serve — and cache — another site's content
+    // under this URL (cross-site defacement / stored XSS).
+    const site = siteFromHost(new URL(c.req.url).host, c.env.BASE_HOST) ?? 'home';
 
     const deployed = await serveSiteFor(c, site, path);
     if (deployed) return deployed;
