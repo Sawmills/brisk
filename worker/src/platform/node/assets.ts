@@ -6,8 +6,9 @@ import type { AssetServer } from '../types';
 /** Serves bundled assets (dashboard, /brisk.js) from disk. Implements the
  *  AssetServer.fetch(path) contract directly (serveStatic is middleware and
  *  resolves against cwd, so it's unsuitable). Guards against path traversal.
- *  Directory paths (`/`, `/foo/`) map to `index.html`, matching how the
- *  Cloudflare ASSETS binding resolves them. */
+ *  Directory paths (`/`, `/foo/`) map to `index.html`, and extensionless paths
+ *  (`/docs`, `/host`) map to `<name>.html`, matching how the Cloudflare ASSETS
+ *  binding resolves them (html_handling defaults to "auto-trailing-slash"). */
 export function createDiskAssets(rootDir: string): AssetServer {
   const root = resolve(rootDir);
   const send = async (file: string): Promise<Response | null> => {
@@ -35,6 +36,14 @@ export function createDiskAssets(rootDir: string): AssetServer {
       if (rel === '' || path.endsWith('/')) {
         const index = await send(resolve(file, 'index.html'));
         if (index) return index;
+      }
+      // Extensionless path → `<name>.html` (Cloudflare's auto-trailing-slash
+      // html_handling: the dashboard links to /docs and /host on disk as
+      // docs.html / host.html).
+      const base = rel.split('/').pop() ?? '';
+      if (base !== '' && !base.includes('.')) {
+        const html = await send(resolve(root, `${rel}.html`));
+        if (html) return html;
       }
       return new Response('Not found', { status: 404 });
     },

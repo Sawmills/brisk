@@ -39,6 +39,14 @@ export function runHttpParity(base: () => string): void {
     });
   });
 
+  describe('parity: extensionless asset routing', () => {
+    it('serves /docs as docs.html (Cloudflare auto-trailing-slash html_handling)', async () => {
+      const res = await fetch(`${base()}/docs`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toContain('text/html');
+    });
+  });
+
   describe('parity: database crud', () => {
     it('creates, reads, lists and deletes a doc', async () => {
       const h = { 'content-type': 'application/json', 'x-brisk-site': 'p-db' };
