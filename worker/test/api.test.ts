@@ -303,3 +303,96 @@ describe('content-type response headers', () => {
     expect(served.headers.get('x-content-type-options')).toBe('nosniff');
   });
 });
+
+describe('realtime websocket', () => {
+  // A socket wrapper with a queue + a next() that rejects on timeout, so a
+  // missing message fails the test fast instead of hanging the whole suite.
+  async function openSocket(site: string) {
+    const res = await SELF.fetch(`${HOST}/api/ws?site=${site}`, {
+      headers: { Upgrade: 'websocket' },
+    });
+    expect(res.status).toBe(101);
+    const ws = res.webSocket!;
+    const queue: unknown[] = [];
+    let wake: (() => void) | null = null;
+    ws.addEventListener('message', (e: MessageEvent) => {
+      queue.push(JSON.parse(e.data as string));
+      wake?.();
+    });
+    ws.accept();
+    const next = (timeoutMs = 2000): Promise<any> =>
+      new Promise((resolve, reject) => {
+        if (queue.length) return resolve(queue.shift());
+        const timer = setTimeout(() => {
+          wake = null;
+          reject(new Error('timed out waiting for a websocket message'));
+        }, timeoutMs);
+        wake = () => {
+          clearTimeout(timer);
+          wake = null;
+          resolve(queue.shift());
+        };
+      });
+    return { ws, next };
+  }
+
+  it('greets with the authenticated identity and delivers db events to the same site', async () => {
+    const site = 'ws-db';
+    const { ws, next } = await openSocket(site);
+
+    // hello proves identity propagates through rooms.connect (x-brisk-user).
+    const hello = await next();
+    expect(hello.t).toBe('hello');
+    expect(hello.you).toMatchObject({ email: 'dev@localhost', name: 'Dev' });
+
+    ws.send(JSON.stringify({ t: 'db:sub', collection: 'msgs' }));
+
+    // The db POST targets the same room via x-brisk-site (host localhost would
+    // otherwise resolve to 'home'); the site and the socket's ?site must match.
+    const created = await (
+      await SELF.fetch(`${HOST}/api/db/msgs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-brisk-site': site },
+        body: JSON.stringify({ text: 'over the wire' }),
+      })
+    ).json<{ id: string }>();
+
+    const event = await next();
+    expect(event).toMatchObject({
+      t: 'db',
+      event: 'create',
+      collection: 'msgs',
+      doc: { id: created.id, text: 'over the wire' },
+    });
+
+    ws.close();
+  });
+
+  it('relays a channel send with the sender identity to a second socket', async () => {
+    const site = 'ws-chan';
+    const a = await openSocket(site);
+    const b = await openSocket(site);
+    expect((await a.next()).t).toBe('hello');
+    expect((await b.next()).t).toBe('hello');
+
+    // Both join, then drain the presence broadcasts each join triggers so the
+    // queues hold only the channel message we assert on next.
+    a.ws.send(JSON.stringify({ t: 'join', channel: 'lobby' }));
+    expect((await a.next()).t).toBe('presence');
+    b.ws.send(JSON.stringify({ t: 'join', channel: 'lobby' }));
+    expect((await a.next()).t).toBe('presence'); // b's join re-broadcasts to a
+    expect((await b.next()).t).toBe('presence');
+
+    a.ws.send(JSON.stringify({ t: 'send', channel: 'lobby', data: { hi: 1 } }));
+    const msg = await b.next();
+    expect(msg).toMatchObject({
+      t: 'msg',
+      channel: 'lobby',
+      data: { hi: 1 },
+      from: { email: 'dev@localhost' },
+    });
+
+    a.ws.close();
+    b.ws.close();
+  });
+});
