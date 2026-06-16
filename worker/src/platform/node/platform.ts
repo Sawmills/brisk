@@ -33,8 +33,12 @@ export function storageFromEnv(env: NodeJS.ProcessEnv = process.env): Storage {
 
 /**
  * The Node makePlatform hook. Runs in createApp's first middleware, so it also
- * delivers config by overwriting c.env (Node's default c.env is {incoming,
- * outgoing}; Context.env is writable). Every existing c.env.X read then works.
+ * delivers config onto c.env. Node's default c.env is {incoming, outgoing} on
+ * the HTTP path, and on the websocket-upgrade path node-server adds its own
+ * fields/symbols there and relies on that object's identity to complete the
+ * upgrade — so we MERGE the config in (Object.assign) instead of replacing the
+ * object, which would strip those internals and break websocket upgrades. Every
+ * existing c.env.X read then works.
  */
 export function makeNodePlatform(opts: NodeOptions): (c: Context<AppEnv>) => Platform {
   const assets = createDiskAssets(opts.assetsDir);
@@ -43,7 +47,7 @@ export function makeNodePlatform(opts: NodeOptions): (c: Context<AppEnv>) => Pla
     void p.catch((err) => console.error('[brisk] background task failed:', err));
   };
   return (c) => {
-    c.env = opts.config;
+    Object.assign(c.env, opts.config);
     return { storage: opts.storage, db: opts.db, rooms: opts.rooms, assets, cache, waitUntil };
   };
 }
