@@ -57,10 +57,18 @@ PersistentVolumeClaim for `/data`, and a Secret for sensitive env.
 ```sh
 helm install brisk deploy/helm/brisk \
   --set config.baseHost=brisk.example.com \
+  --set config.auth=google \
   --set ingress.enabled=true \
   --set ingress.className=nginx \
-  --set secrets.sessionSecret=$(openssl rand -hex 32)
+  --set secrets.sessionSecret=$(openssl rand -hex 32) \
+  --set secrets.googleClientId=… --set secrets.googleClientSecret=…
 ```
+
+`config.auth` is **empty by default** so the worker fails closed (503) rather
+than silently serving an open backend on a public Ingress. A production install
+must set `--set config.auth=google` (with `secrets.sessionSecret` and the Google
+OAuth creds above). Only set `--set config.auth=none` to deliberately run an open
+instance on a trusted network.
 
 Inspect the rendered manifests first with `helm template brisk deploy/helm/brisk …`.
 

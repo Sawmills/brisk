@@ -11,7 +11,10 @@ image:
 # Non-secret instance config (maps to env vars; see README → Configuration).
 config:
   baseHost: '' # e.g. brisk.example.com
-  auth: none # or: google
+  # Empty by default: the worker fails closed (503) on a public host until you
+  # make a deliberate choice. Set `google` for login, or `none` to run open on a
+  # trusted network on purpose. Never leave empty for a public Ingress.
+  auth: '' # google | none
   visibility: private # or: public
   allowedEmails: ''
   allowedEmailDomains: ''

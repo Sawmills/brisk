@@ -29,7 +29,9 @@ spec:
           env:
             - { name: PORT, value: "8787" }
             - { name: BASE_HOST, value: {{ .Values.config.baseHost | quote }} }
+            {{- if .Values.config.auth }}
             - { name: AUTH, value: {{ .Values.config.auth | quote }} }
+            {{- end }}
             - { name: VISIBILITY, value: {{ .Values.config.visibility | quote }} }
             - { name: ALLOWED_EMAILS, value: {{ .Values.config.allowedEmails | quote }} }
             - { name: ALLOWED_EMAIL_DOMAINS, value: {{ .Values.config.allowedEmailDomains | quote }} }
