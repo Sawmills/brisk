@@ -47,12 +47,15 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
+          # /auth/login always 302s (redirects to / under AUTH=none, to Google
+          # under AUTH=google) for a non-document GET, so the probe gets a 3xx
+          # in every AUTH mode — unlike /, which 401s a probe under AUTH=google.
           readinessProbe:
-            httpGet: { path: /, port: http }
+            httpGet: { path: {{ .Values.healthcheck.path | quote }}, port: http }
             initialDelaySeconds: 3
             periodSeconds: 10
           livenessProbe:
-            httpGet: { path: /, port: http }
+            httpGet: { path: {{ .Values.healthcheck.path | quote }}, port: http }
             initialDelaySeconds: 10
             periodSeconds: 20
           resources:

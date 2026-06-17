@@ -116,10 +116,13 @@ Point a DNS A/CNAME record for both the apex and the wildcard
   ingress controller's annotations (`ingress.annotations`); leave
   `ingress.tls.enabled=false` since the LB terminates TLS.
 
-### The `AUTH=google` probe note
+### Health probes
 
-The readiness/liveness probes hit `/`, which returns 200 under `AUTH=none` /
-`VISIBILITY=public` and a 302 redirect to login under `AUTH=google` —
-Kubernetes treats 2xx/3xx as healthy, so both pass. If you run `AUTH=google` and
-a probe ever flaps on a 401 (e.g. a non-document request path), switch the probe
-path to `/auth/login`, which always 302s.
+The readiness/liveness probes hit `healthcheck.path`, which defaults to
+`/auth/login`. That route 302s for a probe request (a non-document `GET`) in
+every `AUTH` mode — to `/` under `AUTH=none` and to Google under `AUTH=google` —
+and Kubernetes treats 3xx as healthy. Probing `/` instead would crash-loop under
+`AUTH=google`: the auth gate only 302s a _browser_ (a `GET` with
+`Sec-Fetch-Dest: document` or an `Accept: text/html`), and a kube-probe sends
+neither, so it gets a `401` — a probe failure. Keep the default unless you run
+`AUTH=none`, where `/` returns `200`.

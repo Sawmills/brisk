@@ -60,6 +60,12 @@ ingress:
     enabled: false
     secretName: brisk-tls
 
+# Liveness/readiness probe path. /auth/login 302s for a probe (non-document GET)
+# in every AUTH mode; / returns 401 to a probe under AUTH=google. Don't change
+# this to / unless you run AUTH=none.
+healthcheck:
+  path: /auth/login
+
 resources:
   requests:
     cpu: 50m
