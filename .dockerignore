@@ -10,3 +10,10 @@ node_modules
 docs/superpowers
 .claude
 *.log
+# Local-dev secrets must never enter the build context (COPY . . in the build
+# stage copies from the working tree, not git — .gitignore doesn't apply here).
+.dev.vars
+**/.dev.vars
+.env
+**/.env
+!**/.env.example
