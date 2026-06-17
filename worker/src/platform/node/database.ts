@@ -1,6 +1,6 @@
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
-import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import type { BatchResult, Database, PreparedStatement } from '../types';
 
 /**
@@ -75,6 +75,9 @@ export class NodeDatabase implements Database {
  * Cloudflare D1 path uses. `exec()` runs the multi-statement .sql files.
  */
 export function openNodeDatabase(file: string, migrationsDir: string): NodeDatabase {
+  // Ensure the file's directory exists (a fresh PVC mount or local dev dir
+  // won't), since DatabaseSync won't create parents. `:memory:` resolves to '.'.
+  if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true });
   const raw = new DatabaseSync(file, { timeout: 5000 });
   raw.exec('PRAGMA journal_mode = WAL');
   raw.exec('CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY)');
