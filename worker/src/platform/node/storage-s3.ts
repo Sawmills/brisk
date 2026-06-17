@@ -9,9 +9,6 @@ export interface S3Config {
   region: string; // explicit — never let aws4fetch guess (breaks for MinIO hosts)
 }
 
-// undici (Node fetch) requires duplex:'half' to send a ReadableStream body.
-type StreamInit = RequestInit & { duplex?: 'half' };
-
 const decodeXml = (s: string): string =>
   s
     .replace(/&lt;/g, '<')
@@ -55,13 +52,19 @@ export function createS3Storage(cfg: S3Config): Storage {
     },
 
     async put(key, body, opts): Promise<void> {
-      const init: StreamInit = {
+      // Buffer the body so the PUT carries a Content-Length. A ReadableStream
+      // body forces chunked Transfer-Encoding, which MinIO (and other strict S3
+      // servers) reject with 411 Length Required. Deploy objects are individual
+      // files, so the buffer is bounded by the largest single asset.
+      const bytes =
+        body instanceof ReadableStream
+          ? new Uint8Array(await new Response(body).arrayBuffer())
+          : body;
+      const res = await aws.fetch(objUrl(key), {
         method: 'PUT',
-        body,
+        body: bytes,
         headers: opts?.contentType ? { 'content-type': opts.contentType } : {},
-      };
-      if (body instanceof ReadableStream) init.duplex = 'half';
-      const res = await aws.fetch(objUrl(key), init);
+      });
       if (!res.ok) throw new Error(`S3 put ${key}: ${res.status}`);
     },
 
