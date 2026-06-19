@@ -1,6 +1,12 @@
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
-import { DEFAULT_IMAGE, type Answers, type AuthMode, type StorageKind, type Target } from './answers.js';
+import {
+  DEFAULT_IMAGE,
+  type Answers,
+  type AuthMode,
+  type StorageKind,
+  type Target,
+} from './answers.js';
 
 async function choose<T extends string>(
   rl: ReturnType<typeof createInterface>,
@@ -42,7 +48,9 @@ export async function ask(): Promise<Answers> {
       'google',
     );
 
-    const baseHost = (await rl.question('\nBase host for sites (blank = path-mode /s/<site>/)\n> ')).trim();
+    const baseHost = (
+      await rl.question('\nBase host for sites (blank = path-mode /s/<site>/)\n> ')
+    ).trim();
 
     let storage: StorageKind = 'fs';
     let s3;
@@ -57,7 +65,8 @@ export async function ask(): Promise<Answers> {
         'fs',
       );
       if (storage === 's3') {
-        const endpoint = (await rl.question('S3 endpoint [http://minio:9000]\n> ')).trim() || 'http://minio:9000';
+        const endpoint =
+          (await rl.question('S3 endpoint [http://minio:9000]\n> ')).trim() || 'http://minio:9000';
         const bucket = (await rl.question('S3 bucket [brisk]\n> ')).trim() || 'brisk';
         const region = (await rl.question('S3 region [us-east-1]\n> ')).trim() || 'us-east-1';
         s3 = { endpoint, bucket, region };

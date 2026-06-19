@@ -311,6 +311,13 @@ To package and ship it — a multi-stage Docker image, a Docker Compose stack
 (with optional MinIO), and a Helm chart (single replica, PVC, ingress) — see
 [deploy/README.md](deploy/README.md).
 
+`npm create brisk@latest` scaffolds the deployment glue for you: it asks a
+handful of questions (target, auth, base host, storage) and writes a Docker
+Compose stack + `.env`, a Helm `brisk-values.yaml`, or a Cloudflare `.dev.vars`
+
+- checklist. It generates **config against the published image/chart** — it
+  does not fork the source — and leaves secrets as placeholders for you to fill.
+
 ## The CLI
 
 ```sh

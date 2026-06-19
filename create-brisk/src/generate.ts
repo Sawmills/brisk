@@ -172,10 +172,13 @@ export function nextSteps(a: Answers): string[] {
             ? '    --set secrets.sessionSecret=$(openssl rand -hex 32) \\\n    --set secrets.googleClientId=… --set secrets.googleClientSecret=…'
             : '    # AUTH=none needs no secrets'),
       );
-      if (a.storage === 's3') steps.push('  # set secrets.s3AccessKeyId / s3SecretAccessKey for your bucket');
+      if (a.storage === 's3')
+        steps.push('  # set secrets.s3AccessKeyId / s3SecretAccessKey for your bucket');
       break;
     case 'cloudflare':
-      steps.push('Follow BRISK-CLOUDFLARE.md: set the dashboard vars + secrets, then `wrangler deploy`.');
+      steps.push(
+        'Follow BRISK-CLOUDFLARE.md: set the dashboard vars + secrets, then `wrangler deploy`.',
+      );
       break;
   }
   return steps;

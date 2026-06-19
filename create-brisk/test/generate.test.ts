@@ -26,7 +26,11 @@ describe('compose target', () => {
   });
 
   it('adds a minio service and S3 env when storage is s3', () => {
-    const f = fileMap({ ...base, storage: 's3', s3: { endpoint: 'http://minio:9000', bucket: 'brisk', region: 'us-east-1' } });
+    const f = fileMap({
+      ...base,
+      storage: 's3',
+      s3: { endpoint: 'http://minio:9000', bucket: 'brisk', region: 'us-east-1' },
+    });
     expect(f['docker-compose.yml']).toContain('minio');
     expect(f['.env']).toContain('STORAGE=s3');
     expect(f['.env']).toContain('S3_ENDPOINT=http://minio:9000');
@@ -67,6 +71,10 @@ describe('nextSteps', () => {
     expect(nextSteps(base).join('\n')).toContain('docker compose');
   });
   it('warns when auth is none', () => {
-    expect(nextSteps({ ...base, auth: 'none' }).join('\n').toLowerCase()).toContain('trusted');
+    expect(
+      nextSteps({ ...base, auth: 'none' })
+        .join('\n')
+        .toLowerCase(),
+    ).toContain('trusted');
   });
 });
