@@ -103,6 +103,20 @@ export interface DeployFile {
 }
 
 /**
+ * A UNIQUE(site,version) collision from a racing deploy. D1 surfaces these as a
+ * `D1_ERROR` string whose text varies by workerd version, so match any of the
+ * forms a SQLite constraint failure is known to take rather than one literal.
+ */
+function isConstraintViolation(err: unknown): boolean {
+  const text = String(err);
+  return (
+    text.includes('UNIQUE') ||
+    text.includes('constraint failed') ||
+    text.includes('SQLITE_CONSTRAINT')
+  );
+}
+
+/**
  * A deploy uploads every file under a fresh prefix, then swaps the site's
  * pointer — so a site is never served half-updated, and the previous deploy
  * is cleaned up only after the swap.
@@ -162,7 +176,7 @@ export async function deploySite(
         .run();
       break;
     } catch (err) {
-      if (attempt === 0 && String(err).includes('UNIQUE')) continue;
+      if (attempt === 0 && isConstraintViolation(err)) continue;
       throw err;
     }
   }
@@ -243,6 +257,7 @@ export async function deleteSite(env: Env, site: string): Promise<boolean> {
   const [sites] = await env.DB.batch([
     env.DB.prepare('DELETE FROM sites WHERE name = ?').bind(site),
     env.DB.prepare('DELETE FROM docs WHERE site = ?').bind(site),
+    env.DB.prepare('DELETE FROM deploys WHERE site = ?').bind(site),
   ]);
   pointerCache.delete(site);
   await Promise.all([deletePrefix(env, `deploys/${site}/`), deletePrefix(env, `uploads/${site}/`)]);

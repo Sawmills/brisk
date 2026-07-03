@@ -122,6 +122,40 @@ describe('deploy and serve', () => {
     expect(await (await SELF.fetch(`${HOST}/s/ver/`)).text()).toBe('second');
   });
 
+  it('keeps versions sequential and distinct under concurrent deploys', async () => {
+    await Promise.all(
+      Array.from({ length: 3 }, (_, i) =>
+        SELF.fetch(`${HOST}/api/deploy/race`, {
+          method: 'POST',
+          body: deployForm({ 'index.html': `v${i}` }),
+        }),
+      ),
+    );
+    // The UNIQUE(site,version) index plus the retry-on-collision insert must
+    // yield contiguous, non-duplicated versions no matter how the writes interleave.
+    const deploys = await listDeploys(env, 'race');
+    expect(deploys).toHaveLength(3);
+    expect(deploys.map((d) => d.version).sort((a, b) => a - b)).toEqual([1, 2, 3]);
+  });
+
+  it('drops version history on delete so a re-created site restarts at version 1', async () => {
+    await SELF.fetch(`${HOST}/api/deploy/reborn`, {
+      method: 'POST',
+      body: deployForm({ 'index.html': 'first' }),
+    });
+    const del = await SELF.fetch(`${HOST}/api/sites/reborn`, { method: 'DELETE' });
+    expect(del.status).toBe(200);
+    expect(await listDeploys(env, 'reborn')).toHaveLength(0);
+
+    await SELF.fetch(`${HOST}/api/deploy/reborn`, {
+      method: 'POST',
+      body: deployForm({ 'index.html': 'again' }),
+    });
+    const deploys = await listDeploys(env, 'reborn');
+    expect(deploys).toHaveLength(1);
+    expect(deploys.map((d) => d.version)).toEqual([1]);
+  });
+
   it('rejects reserved and malformed names', async () => {
     for (const name of ['api', 'Bad.Name']) {
       const res = await SELF.fetch(`${HOST}/api/deploy/${name}`, {
