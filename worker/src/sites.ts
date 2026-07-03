@@ -8,6 +8,9 @@ export interface SiteInfo {
   createdAt: string;
   updatedAt: string;
   updatedBy: string | null;
+  /** Self-asserted, spoofable label set once at creation. A footgun guard,
+   *  never a permission — NULL (legacy/unowned) never blocks a deploy. */
+  owner: string | null;
 }
 
 interface SiteRow {
@@ -18,6 +21,7 @@ interface SiteRow {
   created_at: string;
   updated_at: string;
   updated_by: string | null;
+  owner: string | null;
 }
 
 /** Subdomain-safe: a site name has to be a valid DNS label. */
@@ -38,6 +42,7 @@ function toInfo(row: SiteRow): SiteInfo {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
+    owner: row.owner,
   };
 }
 
@@ -113,6 +118,7 @@ export async function deploySite(
   site: string,
   files: DeployFile[],
   user: User,
+  who: string,
 ): Promise<SiteInfo> {
   const previous = await activeDeploy(env, site);
   const deploy = crypto.randomUUID().slice(0, 8);
@@ -132,8 +138,8 @@ export async function deploySite(
 
   const now = new Date().toISOString();
   const row = await env.DB.prepare(
-    `INSERT INTO sites (name, active_deploy, files, bytes, created_at, updated_at, updated_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO sites (name, active_deploy, files, bytes, created_at, updated_at, updated_by, owner)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (name) DO UPDATE SET
        active_deploy = excluded.active_deploy,
        files = excluded.files,
@@ -143,7 +149,9 @@ export async function deploySite(
      RETURNING *`,
   )
     // Attribute to the human name; auth already falls it back to the email.
-    .bind(site, deploy, files.length, bytes, now, now, user.name)
+    // owner is the asserted identity, set once at creation: it's absent from the
+    // ON CONFLICT UPDATE, so a later deploy (even a forced overwrite) preserves it.
+    .bind(site, deploy, files.length, bytes, now, now, user.name, who)
     .first<SiteRow>();
   pointerCache.delete(site);
 
