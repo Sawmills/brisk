@@ -1,7 +1,7 @@
-import { SELF } from 'cloudflare:test';
+import { SELF, env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { siteFromHost, siteUrl } from '../src/app';
-import { isValidSiteName } from '../src/sites';
+import { isValidSiteName, listDeploys } from '../src/sites';
 
 const HOST = 'http://localhost';
 
@@ -102,6 +102,24 @@ describe('deploy and serve', () => {
     });
     expect(await (await SELF.fetch(`${HOST}/s/swap/`)).text()).toBe('v2');
     expect((await SELF.fetch(`${HOST}/s/swap/old.txt`)).status).toBe(404);
+  });
+
+  it('retains every publish as an immutable version, newest first', async () => {
+    await SELF.fetch(`${HOST}/api/deploy/ver`, {
+      method: 'POST',
+      body: deployForm({ 'index.html': 'first' }),
+    });
+    await SELF.fetch(`${HOST}/api/deploy/ver`, {
+      method: 'POST',
+      body: deployForm({ 'index.html': 'second' }),
+    });
+
+    const deploys = await listDeploys(env, 'ver');
+    expect(deploys).toHaveLength(2);
+    expect(deploys.map((d) => d.version)).toEqual([2, 1]);
+
+    // Serving still follows the live pointer, which names the latest publish.
+    expect(await (await SELF.fetch(`${HOST}/s/ver/`)).text()).toBe('second');
   });
 
   it('rejects reserved and malformed names', async () => {

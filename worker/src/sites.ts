@@ -114,7 +114,6 @@ export async function deploySite(
   files: DeployFile[],
   user: User,
 ): Promise<SiteInfo> {
-  const previous = await activeDeploy(env, site);
   const deploy = crypto.randomUUID().slice(0, 8);
   const prefix = deployPrefix(site, deploy);
 
@@ -147,12 +146,65 @@ export async function deploySite(
     .first<SiteRow>();
   pointerCache.delete(site);
 
-  // Two simultaneous deploys can orphan the loser's prefix; at internal-tool
-  // scale that's rare and cheap, so we don't coordinate beyond last-write-wins.
-  if (previous && previous !== deploy) {
-    ctx.waitUntil(deletePrefix(env, deployPrefix(site, previous)));
+  // TODO(retention): retained versions grow R2 unbounded; prune to keep-last-N
+
+  // Record this publish as an immutable version. The number is computed inline
+  // so concurrent deploys can't read the same MAX and collide; if two still
+  // race to the same value the UNIQUE(site,version) index rejects the loser,
+  // and we retry once against the now-higher MAX.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await env.DB.prepare(
+        `INSERT INTO deploys (site, deploy, version, files, bytes, created_at, created_by)
+         VALUES (?, ?, (SELECT COALESCE(MAX(version), 0) + 1 FROM deploys WHERE site = ?), ?, ?, ?, ?)`,
+      )
+        .bind(site, deploy, site, files.length, bytes, now, user.name)
+        .run();
+      break;
+    } catch (err) {
+      if (attempt === 0 && String(err).includes('UNIQUE')) continue;
+      throw err;
+    }
   }
   return toInfo(row!);
+}
+
+export interface DeployInfo {
+  deploy: string;
+  version: number;
+  files: number;
+  bytes: number;
+  createdAt: string;
+  createdBy: string | null;
+}
+
+/**
+ * Every retained version of a site, newest first. Read-only history; serving
+ * still follows the single live pointer (`sites.active_deploy`). No route
+ * consumes this yet — it backs tests and future rollback/history.
+ */
+export async function listDeploys(env: Env, site: string): Promise<DeployInfo[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT deploy, version, files, bytes, created_at, created_by
+     FROM deploys WHERE site = ? ORDER BY version DESC`,
+  )
+    .bind(site)
+    .all<{
+      deploy: string;
+      version: number;
+      files: number;
+      bytes: number;
+      created_at: string;
+      created_by: string | null;
+    }>();
+  return results.map((row) => ({
+    deploy: row.deploy,
+    version: row.version,
+    files: row.files,
+    bytes: row.bytes,
+    createdAt: row.created_at,
+    createdBy: row.created_by,
+  }));
 }
 
 export async function listFiles(env: Env, site: string): Promise<{ path: string; size: number }[]> {
