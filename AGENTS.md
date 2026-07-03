@@ -50,8 +50,11 @@ BRISK_SERVER=http://localhost:8787 node cli/dist/cli.js deploy examples/guestboo
 
 ## Product philosophy (it constrains code review too)
 
-Six primitives, no more. No permissions, no site owners, no custom backends,
-no cron jobs. When a change adds a knob, a config option, or a seventh
-primitive, the default answer is no — show how the existing pieces cover it.
-The trust model (everything open to every authenticated teammate) is
-intentional; don't "fix" it.
+Six primitives, no more. No permissions, no custom backends, no cron jobs.
+When a change adds a knob, a config option, or a seventh primitive, the
+default answer is no — show how the existing pieces cover it. The trust model
+(everything open to every authenticated teammate) is intentional; don't "fix"
+it. The one carve-out is the deploy `owner`: a self-asserted, spoofable label
+and overwrite footgun-guard, never access control — it gates only the
+deploy-over-someone-else 409 (bypass with `--force`); reads and every other
+write stay open to every authenticated teammate.
