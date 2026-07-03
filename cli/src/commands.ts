@@ -99,6 +99,9 @@ export async function init(name: string | undefined, flags: Flags): Promise<void
 export async function deploy(
   dirArg: string | undefined,
   flags: Flags,
+  // Invoked when a deploy overwrites someone else's site after an interactive
+  // confirm — lets `dev` make the rest of the watch session force silently.
+  onOverwrite?: () => void,
 ): Promise<SiteInfo | undefined> {
   const dir = path.resolve(dirArg ?? '.');
   const site = resolveSite(dir, flags);
@@ -145,7 +148,10 @@ export async function deploy(
     // stdin when it isn't a TTY — an agent or CI job must not hang on a prompt.
     if (process.stdin.isTTY && process.stdout.isTTY) {
       const ok = await confirm(`site "${site}" is owned by ${owner}. overwrite? [y/N] `);
-      if (ok) return await send(true);
+      if (ok) {
+        onOverwrite?.();
+        return await send(true);
+      }
       console.log(dim('aborted — nothing deployed'));
       return undefined;
     }
@@ -178,7 +184,13 @@ function confirm(question: string): Promise<boolean> {
 /** Deploy on every save — the whole "dev server" Brisk needs. */
 export async function dev(dirArg: string | undefined, flags: Flags): Promise<void> {
   const dir = path.resolve(dirArg ?? '.');
-  await deploy(dirArg, flags);
+  // Owner is set-once, so overwriting another owner's site would re-prompt on
+  // every save. Confirm (or --force) once, then force the rest of the session.
+  let force = Boolean(flags.force) || ['1', 'true'].includes(process.env.BRISK_FORCE ?? '');
+  const stick = (): void => {
+    force = true;
+  };
+  await deploy(dirArg, { ...flags, force }, stick);
   console.log(dim('\nwatching for changes — ctrl-c to stop'));
 
   let timer: NodeJS.Timeout | null = null;
@@ -192,7 +204,7 @@ export async function dev(dirArg: string | undefined, flags: Flags): Promise<voi
     }
     deploying = true;
     try {
-      await deploy(dirArg, flags);
+      await deploy(dirArg, { ...flags, force }, stick);
     } catch (err) {
       console.error(yellow(`deploy failed: ${(err as Error).message}`));
     } finally {
