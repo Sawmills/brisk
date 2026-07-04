@@ -43,6 +43,8 @@ function toInfo(row: SiteRow): SiteInfo {
 
 const deployPrefix = (site: string, deploy: string) => `deploys/${site}/${deploy}/`;
 
+const keepHistory = (env: Env): boolean => env.DEPLOY_HISTORY === 'on';
+
 /** The live-deploy pointer barely changes; cache it per isolate for a beat. */
 const pointerCache = new Map<string, { deploy: string | null; expires: number }>();
 const POINTER_TTL_MS = 5_000;
@@ -118,8 +120,8 @@ function isConstraintViolation(err: unknown): boolean {
 
 /**
  * A deploy uploads every file under a fresh prefix, then swaps the site's
- * pointer — so a site is never served half-updated, and the previous deploy
- * is cleaned up only after the swap.
+ * pointer — so a site is never served half-updated. The previous deploy is
+ * pruned only after the swap, and only when DEPLOY_HISTORY isn't retaining it.
  */
 export async function deploySite(
   env: Env,
@@ -128,6 +130,7 @@ export async function deploySite(
   files: DeployFile[],
   user: User,
 ): Promise<SiteInfo> {
+  const previous = await activeDeploy(env, site);
   const deploy = crypto.randomUUID().slice(0, 8);
   const prefix = deployPrefix(site, deploy);
 
@@ -160,7 +163,9 @@ export async function deploySite(
     .first<SiteRow>();
   pointerCache.delete(site);
 
-  // TODO(retention): retained versions grow R2 unbounded; prune to keep-last-N
+  // Retention has two modes: DEPLOY_HISTORY=on keeps every version (rollback
+  // groundwork); unset/off (default) prunes the superseded deploy below so R2
+  // stays bounded. Keep-last-N pruning for the on mode is still future work.
 
   // Record this publish as an immutable version. The number is computed inline
   // so concurrent deploys can't read the same MAX and collide; if two still
@@ -179,6 +184,19 @@ export async function deploySite(
       if (attempt === 0 && isConstraintViolation(err)) continue;
       throw err;
     }
+  }
+
+  // Bounded mode (default): now that the pointer swapped and the version row
+  // exists, drop the superseded deploy so R2 and `deploys` stay in lockstep —
+  // every remaining row still has its files. R2 cleanup is fire-and-forget; two
+  // simultaneous deploys can orphan the loser's prefix, but at internal-tool
+  // scale that's rare and cheap, so we don't coordinate beyond last-write-wins.
+  // The row delete is awaited so listDeploys is consistent the moment we return.
+  if (!keepHistory(env) && previous && previous !== deploy) {
+    ctx.waitUntil(deletePrefix(env, deployPrefix(site, previous)));
+    await env.DB.prepare('DELETE FROM deploys WHERE site = ? AND deploy = ?')
+      .bind(site, previous)
+      .run();
   }
   return toInfo(row!);
 }
