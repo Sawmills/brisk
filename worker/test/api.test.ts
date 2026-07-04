@@ -1,7 +1,7 @@
-import { SELF } from 'cloudflare:test';
+import { SELF, createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { siteFromHost, siteUrl } from '../src/app';
-import { isValidSiteName } from '../src/sites';
+import { createApp, siteFromHost, siteUrl } from '../src/app';
+import { isValidSiteName, listDeploys } from '../src/sites';
 
 const HOST = 'http://localhost';
 
@@ -11,6 +11,24 @@ function deployForm(files: Record<string, string>): FormData {
     form.append('files', new File([content], path, { type: 'text/html' }));
   }
   return form;
+}
+
+const app = createApp();
+
+/**
+ * Deploy through the app with DEPLOY_HISTORY=on so retention is exercised; the
+ * default test env leaves it unset (off). The override keeps the same DB/R2
+ * bindings, so `listDeploys(env, site)` and `SELF.fetch` still see the rows.
+ */
+async function deployWithHistory(site: string, files: Record<string, string>): Promise<Response> {
+  const ctx = createExecutionContext();
+  const res = await app.fetch(
+    new Request(`${HOST}/api/deploy/${site}`, { method: 'POST', body: deployForm(files) }),
+    { ...env, DEPLOY_HISTORY: 'on' as const },
+    ctx,
+  );
+  await waitOnExecutionContext(ctx);
+  return res;
 }
 
 describe('site name rules', () => {
@@ -102,6 +120,68 @@ describe('deploy and serve', () => {
     });
     expect(await (await SELF.fetch(`${HOST}/s/swap/`)).text()).toBe('v2');
     expect((await SELF.fetch(`${HOST}/s/swap/old.txt`)).status).toBe(404);
+  });
+
+  it('retains every publish as an immutable version, newest first', async () => {
+    // DEPLOY_HISTORY=on: both publishes are kept (this also covers the on-retains knob).
+    await deployWithHistory('ver', { 'index.html': 'first' });
+    await deployWithHistory('ver', { 'index.html': 'second' });
+
+    const deploys = await listDeploys(env, 'ver');
+    expect(deploys).toHaveLength(2);
+    expect(deploys.map((d) => d.version)).toEqual([2, 1]);
+
+    // Serving still follows the live pointer, which names the latest publish.
+    expect(await (await SELF.fetch(`${HOST}/s/ver/`)).text()).toBe('second');
+  });
+
+  it('keeps versions sequential and distinct under concurrent deploys', async () => {
+    // Only the retaining (on) path leaves all versions to inspect deterministically.
+    await Promise.all(
+      Array.from({ length: 3 }, (_, i) => deployWithHistory('race', { 'index.html': `v${i}` })),
+    );
+    // The UNIQUE(site,version) index plus the retry-on-collision insert must
+    // yield contiguous, non-duplicated versions no matter how the writes interleave.
+    const deploys = await listDeploys(env, 'race');
+    expect(deploys).toHaveLength(3);
+    expect(deploys.map((d) => d.version).sort((a, b) => a - b)).toEqual([1, 2, 3]);
+  });
+
+  it('prunes the superseded version when DEPLOY_HISTORY is off (default)', async () => {
+    await SELF.fetch(`${HOST}/api/deploy/bounded`, {
+      method: 'POST',
+      body: deployForm({ 'index.html': 'first', 'v1.txt': 'only-in-first' }),
+    });
+    await SELF.fetch(`${HOST}/api/deploy/bounded`, {
+      method: 'POST',
+      body: deployForm({ 'index.html': 'second' }),
+    });
+
+    // The superseded row is deleted synchronously, so history holds only v2.
+    const deploys = await listDeploys(env, 'bounded');
+    expect(deploys).toHaveLength(1);
+    expect(deploys[0]!.version).toBe(2);
+
+    // Serving follows the live pointer, so the first deploy's unique file is gone.
+    expect((await SELF.fetch(`${HOST}/s/bounded/v1.txt`)).status).toBe(404);
+  });
+
+  it('drops version history on delete so a re-created site restarts at version 1', async () => {
+    await SELF.fetch(`${HOST}/api/deploy/reborn`, {
+      method: 'POST',
+      body: deployForm({ 'index.html': 'first' }),
+    });
+    const del = await SELF.fetch(`${HOST}/api/sites/reborn`, { method: 'DELETE' });
+    expect(del.status).toBe(200);
+    expect(await listDeploys(env, 'reborn')).toHaveLength(0);
+
+    await SELF.fetch(`${HOST}/api/deploy/reborn`, {
+      method: 'POST',
+      body: deployForm({ 'index.html': 'again' }),
+    });
+    const deploys = await listDeploys(env, 'reborn');
+    expect(deploys).toHaveLength(1);
+    expect(deploys.map((d) => d.version)).toEqual([1]);
   });
 
   it('rejects reserved and malformed names', async () => {
