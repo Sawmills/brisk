@@ -103,6 +103,20 @@ export interface DeployFile {
 }
 
 /**
+ * A UNIQUE(site,version) collision from a racing deploy. D1 surfaces these as a
+ * `D1_ERROR` string whose text varies by workerd version, so match any of the
+ * forms a SQLite constraint failure is known to take rather than one literal.
+ */
+function isConstraintViolation(err: unknown): boolean {
+  const text = String(err);
+  return (
+    text.includes('UNIQUE') ||
+    text.includes('constraint failed') ||
+    text.includes('SQLITE_CONSTRAINT')
+  );
+}
+
+/**
  * A deploy uploads every file under a fresh prefix, then swaps the site's
  * pointer — so a site is never served half-updated, and the previous deploy
  * is cleaned up only after the swap.
@@ -114,7 +128,6 @@ export async function deploySite(
   files: DeployFile[],
   user: User,
 ): Promise<SiteInfo> {
-  const previous = await activeDeploy(env, site);
   const deploy = crypto.randomUUID().slice(0, 8);
   const prefix = deployPrefix(site, deploy);
 
@@ -147,12 +160,65 @@ export async function deploySite(
     .first<SiteRow>();
   pointerCache.delete(site);
 
-  // Two simultaneous deploys can orphan the loser's prefix; at internal-tool
-  // scale that's rare and cheap, so we don't coordinate beyond last-write-wins.
-  if (previous && previous !== deploy) {
-    ctx.waitUntil(deletePrefix(env, deployPrefix(site, previous)));
+  // TODO(retention): retained versions grow R2 unbounded; prune to keep-last-N
+
+  // Record this publish as an immutable version. The number is computed inline
+  // so concurrent deploys can't read the same MAX and collide; if two still
+  // race to the same value the UNIQUE(site,version) index rejects the loser,
+  // and we retry once against the now-higher MAX.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await env.DB.prepare(
+        `INSERT INTO deploys (site, deploy, version, files, bytes, created_at, created_by)
+         VALUES (?, ?, (SELECT COALESCE(MAX(version), 0) + 1 FROM deploys WHERE site = ?), ?, ?, ?, ?)`,
+      )
+        .bind(site, deploy, site, files.length, bytes, now, user.name)
+        .run();
+      break;
+    } catch (err) {
+      if (attempt === 0 && isConstraintViolation(err)) continue;
+      throw err;
+    }
   }
   return toInfo(row!);
+}
+
+export interface DeployInfo {
+  deploy: string;
+  version: number;
+  files: number;
+  bytes: number;
+  createdAt: string;
+  createdBy: string | null;
+}
+
+/**
+ * Every retained version of a site, newest first. Read-only history; serving
+ * still follows the single live pointer (`sites.active_deploy`). No route
+ * consumes this yet — it backs tests and future rollback/history.
+ */
+export async function listDeploys(env: Env, site: string): Promise<DeployInfo[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT deploy, version, files, bytes, created_at, created_by
+     FROM deploys WHERE site = ? ORDER BY version DESC`,
+  )
+    .bind(site)
+    .all<{
+      deploy: string;
+      version: number;
+      files: number;
+      bytes: number;
+      created_at: string;
+      created_by: string | null;
+    }>();
+  return results.map((row) => ({
+    deploy: row.deploy,
+    version: row.version,
+    files: row.files,
+    bytes: row.bytes,
+    createdAt: row.created_at,
+    createdBy: row.created_by,
+  }));
 }
 
 export async function listFiles(env: Env, site: string): Promise<{ path: string; size: number }[]> {
@@ -191,6 +257,7 @@ export async function deleteSite(env: Env, site: string): Promise<boolean> {
   const [sites] = await env.DB.batch([
     env.DB.prepare('DELETE FROM sites WHERE name = ?').bind(site),
     env.DB.prepare('DELETE FROM docs WHERE site = ?').bind(site),
+    env.DB.prepare('DELETE FROM deploys WHERE site = ?').bind(site),
   ]);
   pointerCache.delete(site);
   await Promise.all([deletePrefix(env, `deploys/${site}/`), deletePrefix(env, `uploads/${site}/`)]);
