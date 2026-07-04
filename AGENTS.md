@@ -47,6 +47,11 @@ BRISK_SERVER=http://localhost:8787 node cli/dist/cli.js deploy examples/guestboo
 - Comments explain constraints and intent, never restate the code.
 - Semantic commits (`feat(worker): …`, `fix(cli): …`), atomic, no bodies
   unless genuinely needed.
+- User-facing changes get a `CHANGELOG.md` entry in the same PR — a line under
+  `## [Unreleased]` (Keep a Changelog: Added/Changed/Fixed). CI enforces this
+  for `worker/`, `sdk/`, and `cli/` `src/` changes; apply the `no-changelog`
+  label to skip pure-internal churn. Releases tag `vX.Y.Z` and `release.yml`
+  cuts the notes from there.
 
 ## Product philosophy (it constrains code review too)
 
