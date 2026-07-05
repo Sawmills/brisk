@@ -2,6 +2,7 @@ import { SELF, createExecutionContext, env, waitOnExecutionContext } from 'cloud
 import { describe, expect, it } from 'vitest';
 import { createApp, siteFromHost, siteUrl } from '../src/app';
 import { isValidSiteName, listDeploys } from '../src/sites';
+import { buildCloudflarePlatform } from '../src/platform/cloudflare/platform';
 
 const HOST = 'http://localhost';
 
@@ -13,12 +14,18 @@ function deployForm(files: Record<string, string>): FormData {
   return form;
 }
 
-const app = createApp();
+const app = createApp((c) => buildCloudflarePlatform(c.env, c.executionCtx));
+
+/** listDeploys takes a Platform now; wrap the shared test D1 so history reads
+ *  hit the same rows the app wrote (the throwaway ctx is only for waitUntil,
+ *  which a read never uses). */
+const listVersions = (site: string) =>
+  listDeploys(buildCloudflarePlatform(env, createExecutionContext()), site);
 
 /**
  * Deploy through the app with DEPLOY_HISTORY=on so retention is exercised; the
  * default test env leaves it unset (off). The override keeps the same DB/R2
- * bindings, so `listDeploys(env, site)` and `SELF.fetch` still see the rows.
+ * bindings, so `listVersions(site)` and `SELF.fetch` still see the rows.
  */
 async function deployWithHistory(site: string, files: Record<string, string>): Promise<Response> {
   const ctx = createExecutionContext();
@@ -127,7 +134,7 @@ describe('deploy and serve', () => {
     await deployWithHistory('ver', { 'index.html': 'first' });
     await deployWithHistory('ver', { 'index.html': 'second' });
 
-    const deploys = await listDeploys(env, 'ver');
+    const deploys = await listVersions('ver');
     expect(deploys).toHaveLength(2);
     expect(deploys.map((d) => d.version)).toEqual([2, 1]);
 
@@ -142,7 +149,7 @@ describe('deploy and serve', () => {
     );
     // The UNIQUE(site,version) index plus the retry-on-collision insert must
     // yield contiguous, non-duplicated versions no matter how the writes interleave.
-    const deploys = await listDeploys(env, 'race');
+    const deploys = await listVersions('race');
     expect(deploys).toHaveLength(3);
     expect(deploys.map((d) => d.version).sort((a, b) => a - b)).toEqual([1, 2, 3]);
   });
@@ -158,7 +165,7 @@ describe('deploy and serve', () => {
     });
 
     // The superseded row is deleted synchronously, so history holds only v2.
-    const deploys = await listDeploys(env, 'bounded');
+    const deploys = await listVersions('bounded');
     expect(deploys).toHaveLength(1);
     expect(deploys[0]!.version).toBe(2);
 
@@ -173,13 +180,13 @@ describe('deploy and serve', () => {
     });
     const del = await SELF.fetch(`${HOST}/api/sites/reborn`, { method: 'DELETE' });
     expect(del.status).toBe(200);
-    expect(await listDeploys(env, 'reborn')).toHaveLength(0);
+    expect(await listVersions('reborn')).toHaveLength(0);
 
     await SELF.fetch(`${HOST}/api/deploy/reborn`, {
       method: 'POST',
       body: deployForm({ 'index.html': 'again' }),
     });
-    const deploys = await listDeploys(env, 'reborn');
+    const deploys = await listVersions('reborn');
     expect(deploys).toHaveLength(1);
     expect(deploys.map((d) => d.version)).toEqual([1]);
   });
