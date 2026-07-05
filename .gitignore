@@ -8,4 +8,5 @@ worker/assets/brisk.js
 worker/assets/changelog.html
 .dev.vars
 .wrangler/
+.brisk-dev/
 .claude/worktrees/
