@@ -10,6 +10,9 @@ releases are published to
 
 ### Added
 
+- A provider-agnostic platform abstraction (storage, database, rooms, assets,
+  cache) behind six seams, so Brisk now runs on Node/self-host — with SQLite
+  plus S3 or the filesystem — in addition to Cloudflare, from the same core.
 - Deploys record a self-asserted `owner` (from `--username`, else the profile).
   Overwriting a site owned by someone else now needs confirmation — the CLI
   prompts, or pass `--force` / `BRISK_FORCE=1`. A spoofable label and footgun
