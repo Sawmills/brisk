@@ -10,6 +10,10 @@ releases are published to
 
 ### Added
 
+- Deploys record a self-asserted `owner` (from `--username`, else the profile).
+  Overwriting a site owned by someone else now needs confirmation — the CLI
+  prompts, or pass `--force` / `BRISK_FORCE=1`. A spoofable label and footgun
+  guard, never access control: unowned sites and every other action stay open.
 - `DEPLOY_HISTORY=on` retains every published deploy as an immutable version
   in a new `deploys` table — version history now, rollback later. Off by
   default: the previous version is deleted after each atomic swap, keeping

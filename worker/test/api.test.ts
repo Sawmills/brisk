@@ -225,6 +225,52 @@ describe('deploy and serve', () => {
   });
 });
 
+describe('site ownership', () => {
+  const deployAs = (name: string, who: string | undefined, force = false) =>
+    SELF.fetch(`${HOST}/api/deploy/${name}${force ? '?force=1' : ''}`, {
+      method: 'POST',
+      headers: who ? { 'x-brisk-username': who } : {},
+      body: deployForm({ 'index.html': `<h1>${name}</h1>` }),
+    });
+
+  const ownerOf = async (name: string): Promise<string | null> =>
+    (await (await SELF.fetch(`${HOST}/api/sites/${name}`)).json<{ owner: string | null }>()).owner;
+
+  it('records the deployer as owner and guards overwrites by others', async () => {
+    // alice claims the site — she becomes its owner.
+    expect((await deployAs('own', 'alice')).status).toBe(200);
+    expect(await ownerOf('own')).toBe('alice');
+
+    // alice redeploys her own site: silent, no confirmation.
+    expect((await deployAs('own', 'alice')).status).toBe(200);
+
+    // bob can't overwrite without forcing.
+    const blocked = await deployAs('own', 'bob');
+    expect(blocked.status).toBe(409);
+    expect(await blocked.json()).toMatchObject({ code: 'owned', owner: 'alice' });
+    expect(await ownerOf('own')).toBe('alice'); // untouched
+
+    // bob forces it through; owner is set-once, so it stays alice.
+    expect((await deployAs('own', 'bob', true)).status).toBe(200);
+    expect(await ownerOf('own')).toBe('alice');
+  });
+
+  it('never blocks a deploy over an unowned (NULL-owner) site', async () => {
+    // A site from before ownership existed: owner column is NULL.
+    const now = new Date().toISOString();
+    await env.DB.prepare(
+      `INSERT INTO sites (name, active_deploy, files, bytes, created_at, updated_at, updated_by, owner)
+       VALUES ('legacy', 'seed', 1, 1, ?, ?, 'old', NULL)`,
+    )
+      .bind(now, now)
+      .run();
+
+    // Anyone may deploy over it, and a plain update never auto-claims it.
+    expect((await deployAs('legacy', 'bob')).status).toBe(200);
+    expect(await ownerOf('legacy')).toBeNull();
+  });
+});
+
 describe('database', () => {
   const headers = { 'content-type': 'application/json', 'x-brisk-site': 'db-test' };
 
