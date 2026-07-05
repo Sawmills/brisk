@@ -26,13 +26,15 @@ ${bold('Options')}
   --server <url>               target instance directly, e.g. brisk.example.com
   --profile <name>             use a specific profile for this command
   --username <name>            deploy identity / owner label (default: profile username)
-  -f, --force                  overwrite a site owned by someone else (alias: -y, --yes)
+  -f, --force                  overwrite a site owned by someone else
+  -y, --yes                    confirm deploying to an open (AUTH=none) public instance
 
 ${bold('Environment')}
   BRISK_PROFILE                like --profile
   BRISK_SERVER, BRISK_TOKEN    direct server + bearer token (CI)
   BRISK_USERNAME               like --username
   BRISK_FORCE                  like --force (agents / CI)
+  BRISK_YES                    like --yes
 `;
 
 async function main(): Promise<void> {
@@ -60,7 +62,8 @@ async function main(): Promise<void> {
     server: values.server,
     profile: values.profile,
     username: values.username,
-    force: Boolean(values.force || values.yes),
+    force: Boolean(values.force),
+    yes: Boolean(values.yes),
   };
   switch (command) {
     case 'init':

@@ -27,6 +27,7 @@ export interface Flags {
   profile?: string;
   username?: string;
   force?: boolean;
+  yes?: boolean;
 }
 
 interface SiteInfo {
@@ -72,6 +73,47 @@ function openInBrowser(url: string): void {
   spawn(cmd, args, { stdio: 'ignore', detached: true }).unref();
 }
 
+/** Mirror of worker/src/auth.ts isLocalHost — the one host set that's "local". */
+function isLocalServer(server: string): boolean {
+  const h = new URL(server).hostname.toLowerCase();
+  return h === 'localhost' || h === '127.0.0.1' || h.endsWith('.localhost');
+}
+
+/**
+ * Deploying to a NON-local instance that runs open (AUTH=none) pushes code to a
+ * platform where every anonymous visitor is a full member — they can deploy over
+ * or delete every site there and spend its AI/storage budget. Confirm intent
+ * first. This never blocks unconditionally and changes nothing about the trust
+ * model; it only makes an easy-to-miss exposure impossible to hit silently.
+ * Detected with zero server changes: an open instance reports the dev identity.
+ */
+async function confirmOpenTarget(conn: Connection, flags: Flags): Promise<void> {
+  if (isLocalServer(conn.server)) return;
+  let open = false;
+  try {
+    const me = await api<{ email: string }>(conn, '/api/me');
+    open = me.email === 'dev@localhost';
+  } catch {
+    return; // a server that requires auth (or errors) isn't an open one
+  }
+  if (!open) return;
+
+  console.error(
+    `${yellow('warning:')} ${bold(conn.server)} runs ${bold('open')} (${dim('AUTH=none')}) on a ` +
+      `public host —\n  anyone who reaches it is a full member who can overwrite or delete every site there.`,
+  );
+  if (flags.yes || ['1', 'true'].includes(process.env.BRISK_YES ?? '')) return;
+  if (!process.stdin.isTTY) {
+    throw new Error(
+      'refusing to deploy to an open public instance non-interactively — pass --yes (-y) or BRISK_YES=1 to confirm',
+    );
+  }
+  const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
+  const answer = await new Promise<string>((res) => rl.question('Deploy anyway? [y/N] ', res));
+  rl.close();
+  if (!/^y(es)?$/i.test(answer.trim())) throw new Error('aborted');
+}
+
 // ---- commands ---------------------------------------------------------------
 
 export async function init(name: string | undefined, flags: Flags): Promise<void> {
@@ -106,6 +148,9 @@ export async function deploy(
   const dir = path.resolve(dirArg ?? '.');
   const site = resolveSite(dir, flags);
   const conn = resolveConnection(flags, dir);
+  // Open-instance gate first (are we shipping to a public AUTH=none host?),
+  // independent of the ownership overwrite gate below.
+  await confirmOpenTarget(conn, flags);
   const username = resolveUsername(flags, conn);
 
   const files = await collectFiles(dir);
@@ -191,6 +236,8 @@ export async function dev(dirArg: string | undefined, flags: Flags): Promise<voi
     force = true;
   };
   await deploy(dirArg, { ...flags, force }, stick);
+  // The open-instance confirm likewise happens once; skip it on every re-deploy.
+  flags = { ...flags, yes: true };
   console.log(dim('\nwatching for changes — ctrl-c to stop'));
 
   let timer: NodeJS.Timeout | null = null;
