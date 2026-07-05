@@ -449,6 +449,42 @@ td code {
   font-size: 0.85rem;
 }
 
+/* ---- changelog ------------------------------------------------------------------- */
+/* Generated from CHANGELOG.md by worker/scripts/build-changelog.mjs. Scoped to
+   .changelog so it can't restyle the plain lists in the docs/hosting prose that
+   share .doc. Version headings reuse `.doc h2`; the date and group labels sit
+   on top of that. */
+
+.changelog h2 .date {
+  color: var(--ink-dim);
+  font-weight: 400;
+  font-size: 0.85rem;
+  margin-left: 0.5rem;
+}
+
+.changelog h3 {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  margin: 1.5rem 0 0.5rem;
+}
+
+.changelog ul {
+  max-width: 65ch;
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.changelog li {
+  margin: 0.35rem 0;
+}
+
+.changelog .empty {
+  color: var(--ink-dim);
+}
+
 /* ---- footer ---------------------------------------------------------------------- */
 
 footer {
