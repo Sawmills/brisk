@@ -73,12 +73,15 @@ Open http://localhost:8787 (or your `BASE_HOST`). State lives in the
 To use S3-compatible storage with a bundled MinIO instead of the filesystem:
 
 ```sh
-# set STORAGE=s3 and the S3_* vars in .env (defaults target the bundled MinIO)
-docker compose -f deploy/docker-compose.yml --profile s3 up -d
+# STORAGE=s3 switches storage; the S3_* creds/endpoint/bucket default to the
+# bundled MinIO, so this works without a .env.
+STORAGE=s3 docker compose -f deploy/docker-compose.yml --profile s3 up -d
 ```
 
-MinIO listens on `:9000` (API) and `:9001` (console). Create the bucket named
-in `S3_BUCKET` before first deploy (the console, or `mc mb`).
+MinIO listens on `:9000` (API) and `:9001` (console). The `s3` profile also runs
+a one-shot `createbucket` container that creates `S3_BUCKET` in MinIO (Brisk
+never creates the bucket itself), so no manual bucket setup is needed. Point at
+an external S3 instead by overriding the `S3_*` vars in `.env`.
 
 ## Helm (Kubernetes)
 
