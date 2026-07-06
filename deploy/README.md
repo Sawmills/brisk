@@ -6,8 +6,39 @@ This directory packages that assembly: a multi-stage `Dockerfile` (at the repo
 root), a Docker Compose stack, and a Helm chart.
 
 Everything is configured with environment variables — the same instance vars as
-Cloudflare plus the storage/runtime knobs. See the table in the root
-[README → Self-hosting on Node / Kubernetes](../README.md#self-hosting-on-node--kubernetes).
+Cloudflare plus the storage/runtime knobs. See [Environment variables](#environment-variables)
+below for the full reference; `deploy/.env.example` is a ready-to-copy starting point.
+
+## Environment variables
+
+Every knob is an env var — the same instance vars as the Cloudflare deploy plus
+the Node storage/runtime settings. Compose reads them from `deploy/.env` (copy
+`deploy/.env.example`); the Helm chart maps the same names from
+`values.yaml`/secrets.
+
+| Variable                | Default              | Purpose                                                                                   |
+| ----------------------- | -------------------- | ----------------------------------------------------------------------------------------- |
+| `AUTH`                  | _(unset → 503)_      | `none` (open, trusted network) or `google`. Unset fails closed on a public ingress.       |
+| `BASE_HOST`             | _(none)_             | Apex host, e.g. `brisk.example.com`; each site serves at a subdomain of it.               |
+| `VISIBILITY`            | `private`            | `public` opens anonymous view-only (demo mode).                                           |
+| `DEPLOY_HISTORY`        | _(off)_              | `on` retains every published version; unset keeps only the live one (bounded storage).    |
+| `SESSION_SECRET`        | _(none)_             | Required when `AUTH=google` (cookie signing). Generate with `openssl rand -hex 32`.       |
+| `GOOGLE_CLIENT_ID`      | _(none)_             | Google OAuth client id (when `AUTH=google`).                                              |
+| `GOOGLE_CLIENT_SECRET`  | _(none)_             | Google OAuth client secret (when `AUTH=google`).                                          |
+| `ALLOWED_EMAIL_DOMAINS` | _(none)_             | Comma/space list of allowed sign-in domains, e.g. `yourco.com`.                           |
+| `ALLOWED_EMAILS`        | _(none)_             | Comma/space list of individually allowed sign-in emails.                                  |
+| `DEPLOY_TOKEN`          | _(none)_             | Optional bearer token for CI deploys.                                                     |
+| `ANTHROPIC_API_KEY`     | _(none)_             | Optional; enables the AI proxy (Anthropic).                                               |
+| `OPENAI_API_KEY`        | _(none)_             | Optional; AI proxy alternative (provider is picked by whichever key is set).              |
+| `STORAGE`               | `s3`                 | `fs` (objects on the data volume) or `s3`. Compose and Helm override the default to `fs`. |
+| `SQLITE_PATH`           | `/data/brisk.sqlite` | SQLite database file (always on the volume, in both storage modes).                       |
+| `FS_ROOT`               | `/data/objects`      | Object directory when `STORAGE=fs`.                                                       |
+| `S3_ENDPOINT`           | _(none)_             | S3-compatible endpoint when `STORAGE=s3`.                                                 |
+| `S3_BUCKET`             | _(none)_             | Bucket name when `STORAGE=s3` (**must already exist** — Brisk won't create it).           |
+| `S3_REGION`             | `us-east-1`          | Bucket region when `STORAGE=s3`.                                                          |
+| `S3_ACCESS_KEY_ID`      | _(none)_             | S3 access key when `STORAGE=s3`.                                                          |
+| `S3_SECRET_ACCESS_KEY`  | _(none)_             | S3 secret key when `STORAGE=s3`.                                                          |
+| `PORT`                  | `8787`               | HTTP listen port.                                                                         |
 
 ## The image
 

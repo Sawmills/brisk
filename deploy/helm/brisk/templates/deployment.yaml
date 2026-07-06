@@ -33,6 +33,9 @@ spec:
             - { name: AUTH, value: {{ .Values.config.auth | quote }} }
             {{- end }}
             - { name: VISIBILITY, value: {{ .Values.config.visibility | quote }} }
+            {{- if .Values.config.deployHistory }}
+            - { name: DEPLOY_HISTORY, value: {{ .Values.config.deployHistory | quote }} }
+            {{- end }}
             - { name: ALLOWED_EMAILS, value: {{ .Values.config.allowedEmails | quote }} }
             - { name: ALLOWED_EMAIL_DOMAINS, value: {{ .Values.config.allowedEmailDomains | quote }} }
             - { name: STORAGE, value: {{ .Values.config.storage | quote }} }

@@ -16,6 +16,7 @@ config:
   # trusted network on purpose. Never leave empty for a public Ingress.
   auth: '' # google | none
   visibility: private # or: public
+  deployHistory: '' # set to `on` to retain every published version; empty keeps only the live one
   allowedEmails: ''
   allowedEmailDomains: ''
   storage: fs # fs | s3
