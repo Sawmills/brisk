@@ -40,6 +40,10 @@ releases are published to
 - Closed a visitor cache-poisoning hole — static pages resolve the site from
   the host only, never a client header — and an unset `AUTH` on a public host
   now fails closed instead of serving an open backend.
+- Hardened the open-instance guard so only a literal `AUTH=none` opens a public
+  host: `AUTH` is trimmed, and any other non-`google` value — a mis-cased
+  `Google` or a misspelled `googl` — now fails closed with the same 503 as an
+  unset `AUTH`, instead of silently serving an anonymously-writable backend.
 - An open (`AUTH=none`) public instance can no longer ship silently: the
   fail-closed 503 now spells out the secure setup, the worker warns once when
   open on purpose, and `brisk deploy` warns and confirms before pushing to an

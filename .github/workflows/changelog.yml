@@ -24,12 +24,15 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
-          for label in $LABELS; do
-            if [ "$label" = "no-changelog" ]; then
+          # Labels are space-joined; pad and glob-match so the test is a fixed
+          # string on a whole label — no word-splitting or globbing of $LABELS,
+          # and "no-changelog-x" won't satisfy it.
+          case " $LABELS " in
+            *" no-changelog "*)
               echo "no-changelog label present — skipping."
               exit 0
-            fi
-          done
+              ;;
+          esac
           changed="$(git diff --name-only "$BASE...$HEAD")"
           if ! printf '%s\n' "$changed" | grep -qE '^(worker|sdk|cli)/src/'; then
             echo "No worker/sdk/cli source changes — a CHANGELOG.md entry is not required."
