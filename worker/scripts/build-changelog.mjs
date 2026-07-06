@@ -16,13 +16,24 @@ const OUT = join(here, '..', 'assets', 'changelog.html'); // worker/assets
 
 const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+// Only http(s) and relative (scheme-less) links may reach an href. A CHANGELOG
+// entry is committed source, but the page renders on the authed apex, so a
+// `[x](javascript:…)` line must not become a live script URL. Browsers strip
+// ASCII whitespace/controls when resolving a scheme (`java\tscript:` still
+// runs), so strip those before deciding; any non-http(s) scheme collapses to a
+// dead `#`.
+const safeUrl = (url) => {
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(url.replace(/[\u0000-\u0020]/g, ''));
+  return scheme && !/^https?$/i.test(scheme[1]) ? '#' : url.trim();
+};
+
 // Inline markdown -> HTML. Runs on already-escaped text, so brackets, parens,
 // and backticks survive to be matched here; links first, then code spans.
 const inline = (text) =>
   escapeHtml(text)
     .replace(
       /\[([^\]]+)\]\(([^)]+)\)/g,
-      (_, label, url) => `<a href="${url.replace(/"/g, '&quot;')}">${label}</a>`,
+      (_, label, url) => `<a href="${safeUrl(url).replace(/"/g, '&quot;')}">${label}</a>`,
     )
     .replace(/`([^`]+)`/g, (_, code) => `<code>${code}</code>`);
 
