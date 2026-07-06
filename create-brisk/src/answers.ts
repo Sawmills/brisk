@@ -13,6 +13,12 @@ export interface Answers {
   /** Sites hang off this host (foo.<baseHost>); empty = path-mode (/s/foo/). */
   baseHost: string;
   auth: AuthMode;
+  /**
+   * Comma-separated Google login allowlist (domains) when auth === 'google';
+   * empty string means "not restricted". An empty allowlist admits ANY Google
+   * account, so the generated config flags it and next steps warn about it.
+   */
+  allowedEmailDomains: string;
   /** Node targets only (compose/kubernetes). */
   storage: StorageKind;
   /** Present when storage === 's3'. */

@@ -1,6 +1,7 @@
 import { createInterface as createPromisesInterface } from 'node:readline/promises';
 import { createInterface } from 'node:readline';
 import { stdin, stdout } from 'node:process';
+import type { Readable } from 'node:stream';
 import {
   DEFAULT_IMAGE,
   type Answers,
@@ -18,7 +19,7 @@ import {
  * silently hang on `printf … | create-brisk`. Buffering the whole stream first
  * keeps the advertised non-interactive / CI usage working.
  */
-interface Reader {
+export interface Reader {
   question(prompt: string): Promise<string>;
   close(): void;
 }
@@ -31,10 +32,10 @@ function ttyReader(): Reader {
   };
 }
 
-async function bufferedReader(): Promise<Reader> {
+export async function bufferedReader(input: Readable = stdin): Promise<Reader> {
   const lines: string[] = await new Promise((resolve) => {
     const collected: string[] = [];
-    const rl = createInterface({ input: stdin });
+    const rl = createInterface({ input });
     rl.on('line', (l) => collected.push(l));
     rl.on('close', () => resolve(collected));
   });
@@ -50,7 +51,7 @@ async function bufferedReader(): Promise<Reader> {
   };
 }
 
-async function choose<T extends string>(
+export async function choose<T extends string>(
   rl: Reader,
   label: string,
   options: { value: T; hint: string }[],
@@ -58,12 +59,21 @@ async function choose<T extends string>(
 ): Promise<T> {
   stdout.write(`\n${label}\n`);
   options.forEach((o, i) => stdout.write(`  ${i + 1}) ${o.value} — ${o.hint}\n`));
-  const ans = (await rl.question(`> [${def}] `)).trim();
-  if (!ans) return def;
-  const byNum = options[Number(ans) - 1];
-  if (byNum) return byNum.value;
-  const byVal = options.find((o) => o.value === ans);
-  return byVal ? byVal.value : def;
+  // Blank accepts the default; a number or exact value selects. Anything else is
+  // a typo, not a silent vote for the default — say so and re-ask. On the
+  // buffered (non-TTY) reader, EOF surfaces as a blank line, so this still
+  // terminates on exhausted input.
+  for (;;) {
+    const ans = (await rl.question(`> [${def}] `)).trim();
+    if (!ans) return def;
+    const byNum = options[Number(ans) - 1];
+    if (byNum) return byNum.value;
+    const byVal = options.find((o) => o.value === ans);
+    if (byVal) return byVal.value;
+    stdout.write(
+      `  ! "${ans}" isn't an option — enter 1–${options.length} or a name (blank = ${def}).\n`,
+    );
+  }
 }
 
 export async function ask(): Promise<Answers> {
@@ -90,6 +100,17 @@ export async function ask(): Promise<Answers> {
       'google',
     );
 
+    // An empty allowlist admits anyone Google authenticates, so ask up front.
+    let allowedEmailDomains = '';
+    if (auth === 'google') {
+      allowedEmailDomains = (
+        await rl.question(
+          '\nAllowed Google email domain(s), comma-separated (e.g. yourco.com).\n' +
+            'Leave blank to set later — but an EMPTY allowlist lets ANY Google account in.\n> ',
+        )
+      ).trim();
+    }
+
     const baseHost = (
       await rl.question('\nBase host for sites (blank = path-mode /s/<site>/)\n> ')
     ).trim();
@@ -115,7 +136,7 @@ export async function ask(): Promise<Answers> {
       }
     }
 
-    return { target, auth, baseHost, storage, s3, image: DEFAULT_IMAGE };
+    return { target, auth, allowedEmailDomains, baseHost, storage, s3, image: DEFAULT_IMAGE };
   } finally {
     rl.close();
   }
