@@ -27,6 +27,18 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
+  create-brisk:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.21
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.6(@types/node@22.19.21)
+
   sdk:
     devDependencies:
       esbuild:
