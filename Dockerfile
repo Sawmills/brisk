@@ -7,9 +7,15 @@ RUN corepack enable
 # Copy the whole monorepo (the .dockerignore keeps it lean) — the build needs
 # the sdk to generate worker/assets/brisk.js and the worker to bundle.
 COPY . .
+# Generate the built assets (brisk.js via the sdk, changelog.html from
+# CHANGELOG.md — both gitignored, so absent unless produced here or /changelog
+# 404s), bundle the Node entry, then materialize a self-contained, lockfile-
+# pinned production node_modules under /prod for the runtime stage.
 RUN pnpm install --frozen-lockfile \
  && pnpm --filter @usebrisk/sdk build \
- && pnpm --filter @usebrisk/worker build:node
+ && node worker/scripts/build-changelog.mjs \
+ && pnpm --filter @usebrisk/worker build:node \
+ && pnpm --filter @usebrisk/worker --legacy deploy --prod --frozen-lockfile /prod
 
 # ---- runtime: slim image with only prod deps + the bundle/assets/migrations ----
 FROM node:24-slim AS runtime
@@ -20,10 +26,12 @@ ENV NODE_ENV=production \
     FS_ROOT=/data/objects \
     SQLITE_PATH=/data/brisk.sqlite
 WORKDIR /app
-# Production deps only. The worker's deps are all public packages (no workspace
-# refs), so a standalone install is self-contained.
+# Production deps, resolved from the frozen lockfile in the build stage (pnpm
+# deploy), so a rebuilt tag installs the exact versions that were tested rather
+# than drifting off the `^` ranges. package.json carries `type: module` for the
+# ESM bundle and the version metadata.
+COPY --from=build /prod/node_modules ./node_modules
 COPY worker/package.json ./package.json
-RUN npm install --omit=dev --no-audit --no-fund --no-package-lock
 # The bundle + the assets/migrations it resolves relative to dist/.
 COPY --from=build /repo/worker/dist ./dist
 COPY --from=build /repo/worker/assets ./assets
