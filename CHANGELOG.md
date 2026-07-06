@@ -10,6 +10,11 @@ releases are published to
 
 ### Added
 
+- `npm create brisk` — an interactive wizard that scaffolds a self-host
+  deployment. Pick a target (Docker Compose, Kubernetes/Helm, or Cloudflare
+  Workers), auth mode, and storage backend, and it writes the matching
+  deployment config (`docker-compose.yml` + `.env`, `brisk-values.yaml`, or
+  `.dev.vars` + a Cloudflare checklist) plus next steps.
 - Deploys record a self-asserted `owner` (from `--username`, else the profile).
   Overwriting a site owned by someone else now needs confirmation — the CLI
   prompts, or pass `--force` / `BRISK_FORCE=1`. A spoofable label and footgun
