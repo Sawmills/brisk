@@ -13,6 +13,11 @@ releases are published to
 - A provider-agnostic platform abstraction (storage, database, rooms, assets,
   cache) behind six seams, so Brisk now runs on Node/self-host — with SQLite
   plus S3 or the filesystem — in addition to Cloudflare, from the same core.
+- `npm create brisk` — an interactive wizard that scaffolds a self-host
+  deployment. Pick a target (Docker Compose, Kubernetes/Helm, or Cloudflare
+  Workers), auth mode, and storage backend, and it writes the matching
+  deployment config (`docker-compose.yml` + `.env`, `brisk-values.yaml`, or
+  `.dev.vars` + a Cloudflare checklist) plus next steps.
 - The dashboard's drag-and-drop deploy takes a "deploying as" name, so a browser
   deploy records an `owner` the way `brisk deploy --username` already does. The
   name is remembered between drops. Dropping onto a site someone else owns now
