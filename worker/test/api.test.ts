@@ -129,6 +129,31 @@ describe('deploy and serve', () => {
     expect((await SELF.fetch(`${HOST}/s/swap/old.txt`)).status).toBe(404);
   });
 
+  it('tells a missing path apart from a missing site', async () => {
+    await SELF.fetch(`${HOST}/api/deploy/live`, {
+      method: 'POST',
+      body: deployForm({ 'index.html': '<h1>live</h1>' }),
+    });
+
+    // The site exists — a bad path must not invite a deploy that would overwrite it.
+    const missingPath = await SELF.fetch(`${HOST}/s/live/nope`);
+    expect(missingPath.status).toBe(404);
+    const livePage = await missingPath.text();
+    expect(livePage).toContain('is live');
+    expect(livePage).not.toContain('brisk deploy --site');
+
+    // No such site — here the claim instructions are the right answer.
+    const missingSite = await SELF.fetch(`${HOST}/s/ghost/`);
+    expect(missingSite.status).toBe(404);
+    expect(await missingSite.text()).toContain('brisk deploy --site ghost');
+
+    // Same split on the subdomain route.
+    const subMissingPath = await SELF.fetch('http://live.localhost/nope');
+    expect(await subMissingPath.text()).toContain('is live');
+    const subMissingSite = await SELF.fetch('http://ghost.localhost/');
+    expect(await subMissingSite.text()).toContain('brisk deploy --site ghost');
+  });
+
   it('retains every publish as an immutable version, newest first', async () => {
     // DEPLOY_HISTORY=on: both publishes are kept (this also covers the on-retains knob).
     await deployWithHistory('ver', { 'index.html': 'first' });
@@ -242,6 +267,23 @@ describe('site ownership', () => {
 
   const ownerOf = async (name: string): Promise<string | null> =>
     (await (await SELF.fetch(`${HOST}/api/sites/${name}`)).json<{ owner: string | null }>()).owner;
+
+  const updatedByOf = async (name: string): Promise<string | null> =>
+    (await (await SELF.fetch(`${HOST}/api/sites/${name}`)).json<{ updatedBy: string | null }>())
+      .updatedBy;
+
+  it('attributes the deploy to the asserted deployer, not the auth identity', async () => {
+    // On AUTH=none every request resolves to the same 'Dev' user, so the asserted
+    // name is the only human attribution there is — it must drive updatedBy (the
+    // dashboard's "by" column), not just the set-once owner.
+    expect((await deployAs('attributed', 'alice')).status).toBe(200);
+    expect(await updatedByOf('attributed')).toBe('alice');
+
+    // A later deployer becomes the latest 'by', even as the owner stays alice.
+    expect((await deployAs('attributed', 'bob', true)).status).toBe(200);
+    expect(await updatedByOf('attributed')).toBe('bob');
+    expect(await ownerOf('attributed')).toBe('alice');
+  });
 
   it('records the deployer as owner and guards overwrites by others', async () => {
     // alice claims the site — she becomes its owner.

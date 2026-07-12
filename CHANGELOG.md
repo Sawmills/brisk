@@ -13,6 +13,27 @@ releases are published to
 - A provider-agnostic platform abstraction (storage, database, rooms, assets,
   cache) behind six seams, so Brisk now runs on Node/self-host — with SQLite
   plus S3 or the filesystem — in addition to Cloudflare, from the same core.
+- The dashboard's drag-and-drop deploy takes a "deploying as" name, so a browser
+  deploy records an `owner` the way `brisk deploy --username` already does. The
+  name is remembered between drops. Dropping onto a site someone else owns now
+  surfaces the same 409 the CLI does and asks you to launch again to overwrite,
+  instead of failing with no way through.
+
+### Fixed
+
+- Deploys are attributed to the asserted deployer, so the dashboard's "by"
+  column matches the `owner` label instead of the authenticated account. On
+  `AUTH=none` every request is the same `Dev` user, which made every deploy read
+  as `Dev` no matter who shipped it.
+- The 404 page tells a missing path apart from a missing site. A typo'd path on
+  a live site used to answer with `brisk deploy --site <name>` — instructions
+  that would have overwritten the very site you were browsing. It now links back
+  to the site's root, and only an unclaimed name gets the deploy hint.
+
+## [0.2.0] - 2026-07-06
+
+### Added
+
 - Deploys record a self-asserted `owner` (from `--username`, else the profile).
   Overwriting a site owned by someone else now needs confirmation — the CLI
   prompts, or pass `--force` / `BRISK_FORCE=1`. A spoofable label and footgun
@@ -43,6 +64,10 @@ releases are published to
 - Closed a visitor cache-poisoning hole — static pages resolve the site from
   the host only, never a client header — and an unset `AUTH` on a public host
   now fails closed instead of serving an open backend.
+- Hardened the open-instance guard so only a literal `AUTH=none` opens a public
+  host: `AUTH` is trimmed, and any other non-`google` value — a mis-cased
+  `Google` or a misspelled `googl` — now fails closed with the same 503 as an
+  unset `AUTH`, instead of silently serving an anonymously-writable backend.
 - An open (`AUTH=none`) public instance can no longer ship silently: the
   fail-closed 503 now spells out the secure setup, the worker warns once when
   open on purpose, and `brisk deploy` warns and confirms before pushing to an
@@ -82,5 +107,6 @@ releases are published to
 - `@usebrisk/cli` and `@usebrisk/sdk` published to npm, cut in lockstep by a
   tag-driven release workflow.
 
-[unreleased]: https://github.com/tomperi/brisk/compare/v0.1.0...HEAD
+[unreleased]: https://github.com/tomperi/brisk/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/tomperi/brisk/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/tomperi/brisk/releases/tag/v0.1.0

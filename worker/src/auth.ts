@@ -2,7 +2,7 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { sign, verify } from 'hono/jwt';
-import type { AppEnv, User } from './env';
+import type { AppEnv, Env, User } from './env';
 
 const SESSION_COOKIE = 'brisk_session';
 const STATE_COOKIE = 'brisk_oauth_state';
@@ -17,6 +17,16 @@ function isLocalHost(host: string): boolean {
   const h = host.split(':')[0]!.toLowerCase();
   return h === 'localhost' || h === '127.0.0.1' || h.endsWith('.localhost');
 }
+
+/**
+ * The configured auth mode, read once and trimmed so a stray-whitespace
+ * `AUTH=google ` (an easy dashboard/.env typo) still reads as google. Matched
+ * by exact string everywhere: only a literal `google` or `none` is honored, so
+ * any other value — unset, mis-cased (`Google`), or misspelled (`googl`) —
+ * fails the `=== 'google'` gate AND the `=== 'none'` open-on-purpose check, and
+ * so hits the fail-closed guard in `auth()` instead of silently opening.
+ */
+const authMode = (env: Env): string => (env.AUTH ?? '').trim();
 
 let warnedOpenPublic = false;
 /**
@@ -224,7 +234,7 @@ export function cliConsent(): MiddlewareHandler<AppEnv> {
   return async (c) => {
     const callback = cliCallback(c);
     if (!callback) return c.text('Bad request: expected ?port= (1024-65535) and ?state=.', 400);
-    if (c.env.AUTH !== 'google') {
+    if (authMode(c.env) !== 'google') {
       callback.searchParams.set('open', '1'); // this instance needs no token
       return c.redirect(callback.toString());
     }
@@ -250,7 +260,7 @@ export function cliMint(): MiddlewareHandler<AppEnv> {
   return async (c) => {
     const callback = cliCallback(c);
     if (!callback) return c.text('Bad request: expected ?port= (1024-65535) and ?state=.', 400);
-    if (c.env.AUTH !== 'google') {
+    if (authMode(c.env) !== 'google') {
       callback.searchParams.set('open', '1');
       return c.redirect(callback.toString());
     }
@@ -271,15 +281,18 @@ export function cliMint(): MiddlewareHandler<AppEnv> {
  */
 export function auth(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
-    if (c.env.AUTH !== 'google') {
+    const mode = authMode(c.env);
+    if (mode !== 'google') {
       const host = new URL(c.req.url).host;
       const local = isLocalHost(host);
       // AUTH=none is "trusted network", fine locally. But Workers are public by
-      // default, so an *unset* AUTH on a public host is almost always a forgotten
-      // config that would ship an open, anonymously-writable backend. Fail closed
-      // there and point at the secure setup; require an explicit AUTH=none to run
-      // open on purpose.
-      if (!c.env.AUTH && !local) {
+      // default, so on a public host anything that isn't a literal AUTH=none —
+      // an *unset* AUTH, or a typo like `Google`/`googl` that slips past the
+      // `=== 'google'` gate — is almost always a forgotten or fat-fingered
+      // config that would ship an open, anonymously-writable backend. Fail
+      // closed there and point at the secure setup; only an explicit AUTH=none
+      // runs open on purpose.
+      if (mode !== 'none' && !local) {
         return c.text(
           'Refusing to serve an open backend on a public host.\n\n' +
             'Set AUTH=google to require login (recommended). Without it, anyone who\n' +
@@ -298,7 +311,7 @@ export function auth(): MiddlewareHandler<AppEnv> {
       // An explicit AUTH=none on a public host is open "on purpose" — but it serves
       // an anonymously-writable backend to the whole internet, so never let it be
       // silent.
-      if (c.env.AUTH === 'none' && !local) warnOpenPublicOnce(host);
+      if (mode === 'none' && !local) warnOpenPublicOnce(host);
       c.set('user', devUser());
       return next();
     }
@@ -344,7 +357,7 @@ export function authRoutes(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
   app.get('/auth/login', (c) => {
-    if (c.env.AUTH !== 'google') return c.redirect('/');
+    if (authMode(c.env) !== 'google') return c.redirect('/');
     const state = `${crypto.randomUUID()}.${utf8ToB64(safeNext(c, c.req.query('next')))}`;
     setCookie(c, STATE_COOKIE, state, {
       path: '/auth',
