@@ -14,6 +14,10 @@ releases are published to
   column matches the `owner` label instead of the authenticated account. On
   `AUTH=none` every request is the same `Dev` user, which made every deploy read
   as `Dev` no matter who shipped it.
+- The 404 page tells a missing path apart from a missing site. A typo'd path on
+  a live site used to answer with `brisk deploy --site <name>` — instructions
+  that would have overwritten the very site you were browsing. It now links back
+  to the site's root, and only an unclaimed name gets the deploy hint.
 
 ## [0.2.0] - 2026-07-06
 
