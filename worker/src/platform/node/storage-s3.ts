@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { AwsClient } from 'aws4fetch';
 import type { ListResult, Storage, StoredObject } from '../types';
 
@@ -24,6 +25,27 @@ const escapeXml = (s: string): string =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
+
+/**
+ * Build the body and headers for a multi-object DeleteObjects request.
+ * AWS S3 rejects DeleteObjects (400 InvalidRequest) unless it carries an
+ * integrity header — and aws4fetch signs S3 with `x-amz-content-sha256:
+ * UNSIGNED-PAYLOAD`, so the payload hash can't stand in. Content-MD5 over the
+ * exact XML body is the broadest-compatible choice (it also satisfies MinIO).
+ * Pure and exported so the header can be unit-tested without a live S3/MinIO.
+ */
+export function deleteRequestParts(keys: string[]): {
+  body: string;
+  headers: Record<string, string>;
+} {
+  const body =
+    `<?xml version="1.0" encoding="UTF-8"?><Delete><Quiet>true</Quiet>` +
+    keys.map((k) => `<Object><Key>${escapeXml(k)}</Key></Object>`).join('') +
+    `</Delete>`;
+  // MD5 over the UTF-8 bytes fetch will send — matches non-ASCII keys too.
+  const contentMd5 = createHash('md5').update(body, 'utf8').digest('base64');
+  return { body, headers: { 'content-type': 'application/xml', 'content-md5': contentMd5 } };
+}
 
 /** S3-compatible Storage (AWS S3 and MinIO) over aws4fetch. Path-style URLs. */
 export function createS3Storage(cfg: S3Config): Storage {
@@ -90,15 +112,8 @@ export function createS3Storage(cfg: S3Config): Storage {
 
     async delete(keys): Promise<void> {
       if (keys.length === 0) return;
-      const body =
-        `<?xml version="1.0" encoding="UTF-8"?><Delete><Quiet>true</Quiet>` +
-        keys.map((k) => `<Object><Key>${escapeXml(k)}</Key></Object>`).join('') +
-        `</Delete>`;
-      const res = await aws.fetch(`${bucketUrl}?delete`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/xml' },
-        body,
-      });
+      const { body, headers } = deleteRequestParts(keys);
+      const res = await aws.fetch(`${bucketUrl}?delete`, { method: 'POST', headers, body });
       if (!res.ok) throw new Error(`S3 delete batch: ${res.status}`);
     },
   };

@@ -16,10 +16,14 @@
   const SKIP = new Set(['.git', 'node_modules', '.DS_Store']);
   const MAX_FILES = 2000;
   const MAX_BYTES = 50 * 1024 * 1024;
+  const USERNAME_KEY = 'brisk-username';
 
   let dropped = []; // [{ path, file }]
   let stage = null;
   let shipping = false;
+  /** Set once the server has told us this name is owned by someone else, so the
+   *  next launch may overwrite it. Cleared whenever the name changes. */
+  let armedForce = false;
 
   function show(next) {
     stage = next;
@@ -111,6 +115,7 @@
       `${dropped.length} ${dropped.length === 1 ? 'file' : 'files'} ready · ${humanBytes(bytes)}`;
     $('name-suffix').textContent = subdomainMode() ? `.${location.host}` : ` → /s/…/`;
     nameInput.value = slugify(defaultName);
+    $('deploy-username').value = localStorage.getItem(USERNAME_KEY) ?? '';
     show('name');
     refreshNote();
     nameInput.focus();
@@ -126,6 +131,9 @@
     const clean = slugify(nameInput.value);
     if (nameInput.value !== clean) nameInput.value = clean;
     $('drop-error').hidden = true;
+    // A different name is a different site: any pending overwrite no longer applies.
+    armedForce = false;
+    launch.textContent = 'launch';
     refreshNote();
   });
 
@@ -147,10 +155,29 @@
     const form = new FormData();
     for (const { path, file } of dropped) form.append('files', file, path);
 
+    // The self-asserted deployer, same header the CLI sends. Remembered so you
+    // name yourself once, not on every drop.
+    const username = $('deploy-username').value.trim();
+    if (username) localStorage.setItem(USERNAME_KEY, username);
+    else localStorage.removeItem(USERNAME_KEY);
+
     try {
-      const res = await fetch(`/api/deploy/${name}`, { method: 'POST', body: form });
+      const res = await fetch(`/api/deploy/${name}${armedForce ? '?force=1' : ''}`, {
+        method: 'POST',
+        body: form,
+        headers: username ? { 'x-brisk-username': username } : {},
+      });
       const info = await res.json().catch(() => ({}));
+
+      // Someone else owns this site. Mirror the CLI's confirm rather than forcing
+      // silently: the next launch — and only for this name — carries ?force=1.
+      if (res.status === 409 && info.code === 'owned') {
+        armedForce = true;
+        launch.textContent = 'overwrite';
+        throw new Error(`${name} belongs to ${info.owner} — launch again to overwrite it`);
+      }
       if (!res.ok) throw new Error(info.error ?? `deploy failed (${res.status})`);
+      armedForce = false;
 
       const link = $('live-link');
       link.textContent = info.url.replace(/^https?:\/\//, '').replace(/\/$/, '');
@@ -161,7 +188,7 @@
     } catch (err) {
       fail(err.message);
       launch.disabled = false;
-      launch.textContent = 'launch';
+      launch.textContent = armedForce ? 'overwrite' : 'launch';
     } finally {
       shipping = false;
     }
