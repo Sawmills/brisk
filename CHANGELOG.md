@@ -8,6 +8,14 @@ releases are published to
 
 ## [Unreleased]
 
+### Added
+
+- The dashboard's drag-and-drop deploy takes a "deploying as" name, so a browser
+  deploy records an `owner` the way `brisk deploy --username` already does. The
+  name is remembered between drops. Dropping onto a site someone else owns now
+  surfaces the same 409 the CLI does and asks you to launch again to overwrite,
+  instead of failing with no way through.
+
 ### Fixed
 
 - Deploys are attributed to the asserted deployer, so the dashboard's "by"
