@@ -1,5 +1,5 @@
 import { contentType } from './mime';
-import type { Env, User } from './env';
+import type { Env } from './env';
 
 export interface SiteInfo {
   name: string;
@@ -133,7 +133,6 @@ export async function deploySite(
   ctx: ExecutionContext,
   site: string,
   files: DeployFile[],
-  user: User,
   who: string,
 ): Promise<SiteInfo> {
   const previous = await activeDeploy(env, site);
@@ -164,10 +163,11 @@ export async function deploySite(
        updated_by = excluded.updated_by
      RETURNING *`,
   )
-    // Attribute to the human name; auth already falls it back to the email.
-    // owner is the asserted identity, set once at creation: it's absent from the
-    // ON CONFLICT UPDATE, so a later deploy (even a forced overwrite) preserves it.
-    .bind(site, deploy, files.length, bytes, now, now, user.name, who)
+    // Attribute to `who` — the asserted deployer, which auth already falls back
+    // to the user's name then email. updated_by is the latest deployer; owner is
+    // the same identity but set once at creation: it's absent from the ON CONFLICT
+    // UPDATE, so a later deploy (even a forced overwrite) preserves it.
+    .bind(site, deploy, files.length, bytes, now, now, who, who)
     .first<SiteRow>();
   pointerCache.delete(site);
 
@@ -185,7 +185,7 @@ export async function deploySite(
         `INSERT INTO deploys (site, deploy, version, files, bytes, created_at, created_by)
          VALUES (?, ?, (SELECT COALESCE(MAX(version), 0) + 1 FROM deploys WHERE site = ?), ?, ?, ?, ?)`,
       )
-        .bind(site, deploy, site, files.length, bytes, now, user.name)
+        .bind(site, deploy, site, files.length, bytes, now, who)
         .run();
       break;
     } catch (err) {

@@ -8,6 +8,13 @@ releases are published to
 
 ## [Unreleased]
 
+### Fixed
+
+- Deploys are attributed to the asserted deployer, so the dashboard's "by"
+  column matches the `owner` label instead of the authenticated account. On
+  `AUTH=none` every request is the same `Dev` user, which made every deploy read
+  as `Dev` no matter who shipped it.
+
 ## [0.2.0] - 2026-07-06
 
 ### Added

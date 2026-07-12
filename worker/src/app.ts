@@ -337,7 +337,7 @@ export function createApp(): Hono<AppEnv> {
       );
     }
 
-    const info = await deploySite(c.env, c.executionCtx, site, files, c.var.user, who);
+    const info = await deploySite(c.env, c.executionCtx, site, files, who);
     return c.json({ ...info, url: siteUrl(c, site) });
   });
 

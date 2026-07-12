@@ -236,6 +236,23 @@ describe('site ownership', () => {
   const ownerOf = async (name: string): Promise<string | null> =>
     (await (await SELF.fetch(`${HOST}/api/sites/${name}`)).json<{ owner: string | null }>()).owner;
 
+  const updatedByOf = async (name: string): Promise<string | null> =>
+    (await (await SELF.fetch(`${HOST}/api/sites/${name}`)).json<{ updatedBy: string | null }>())
+      .updatedBy;
+
+  it('attributes the deploy to the asserted deployer, not the auth identity', async () => {
+    // On AUTH=none every request resolves to the same 'Dev' user, so the asserted
+    // name is the only human attribution there is — it must drive updatedBy (the
+    // dashboard's "by" column), not just the set-once owner.
+    expect((await deployAs('attributed', 'alice')).status).toBe(200);
+    expect(await updatedByOf('attributed')).toBe('alice');
+
+    // A later deployer becomes the latest 'by', even as the owner stays alice.
+    expect((await deployAs('attributed', 'bob', true)).status).toBe(200);
+    expect(await updatedByOf('attributed')).toBe('bob');
+    expect(await ownerOf('attributed')).toBe('alice');
+  });
+
   it('records the deployer as owner and guards overwrites by others', async () => {
     // alice claims the site — she becomes its owner.
     expect((await deployAs('own', 'alice')).status).toBe(200);
