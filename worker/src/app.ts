@@ -369,7 +369,10 @@ export function createApp(): Hono<AppEnv> {
   app.get('/s/:site/*', async (c) => {
     const site = c.req.param('site');
     const path = new URL(c.req.url).pathname.slice(`/s/${site}`.length);
-    return (await serveSiteFor(c, site, path)) ?? notFoundPage(site);
+    const deployed = await serveSiteFor(c, site, path);
+    if (deployed) return deployed;
+    const exists = Boolean(await getSite(c.env, site));
+    return notFoundPage(site, path, exists, `/s/${site}/`);
   });
   app.get('/s/:site', (c) => c.redirect(`/s/${c.req.param('site')}/`));
 
@@ -395,7 +398,9 @@ export function createApp(): Hono<AppEnv> {
       const asset = await c.env.ASSETS.fetch(new URL('/brisk.js', 'https://assets.local'));
       if (asset.ok) return securedAsset(asset);
     }
-    return notFoundPage(site);
+    // `home` is the dashboard, not a deployed site — a miss there is just a bad URL.
+    const exists = site !== 'home' && Boolean(await getSite(c.env, site));
+    return notFoundPage(site, path, exists, '/');
   });
 
   return app;
@@ -418,12 +423,23 @@ function securedAsset(asset: Response): Response {
   });
 }
 
-function notFoundPage(site: string): Response {
+/**
+ * The catch-all 404, in three shapes — "no such site" and "the site is live but
+ * this path isn't" are different answers. Telling someone to `brisk deploy
+ * --site X` when X is already live would invite them to overwrite it.
+ */
+function notFoundPage(site: string, path: string, exists: boolean, root: string): Response {
+  const body = exists
+    ? `<h1><em>${escapeHtml(site)}</em> is live, but there's no page at <code>${escapeHtml(path)}</code></h1>
+<p><a href="${escapeHtml(root)}">← back to ${escapeHtml(site)}</a></p>`
+    : site === 'home'
+      ? `<h1>Nothing here</h1><p>That page doesn't exist.</p>`
+      : `<h1>Nothing at <em>${escapeHtml(site)}</em> yet</h1>
+<p>Claim it from any folder:</p><p><code>brisk deploy --site ${escapeHtml(site)}</code></p>`;
   return new Response(
-    `<!doctype html><meta charset="utf-8"><title>Nothing here yet</title>
-<style>body{font:16px/1.6 ui-monospace,monospace;display:grid;place-items:center;min-height:100vh;margin:0;background:#0c0c0f;color:#e8e6e0}main{text-align:center;padding:2rem}h1{font-size:1.4rem}code{background:#1c1c22;padding:.2em .5em;border-radius:6px;color:#9ee493}</style>
-<main><h1>Nothing at <em>${escapeHtml(site)}</em> yet</h1>
-<p>Claim it from any folder:</p><p><code>brisk deploy --site ${escapeHtml(site)}</code></p></main>`,
+    `<!doctype html><meta charset="utf-8"><title>${exists ? 'Page not found' : 'Nothing here yet'}</title>
+<style>body{font:16px/1.6 ui-monospace,monospace;display:grid;place-items:center;min-height:100vh;margin:0;background:#0c0c0f;color:#e8e6e0}main{text-align:center;padding:2rem}h1{font-size:1.4rem}code{background:#1c1c22;padding:.2em .5em;border-radius:6px;color:#9ee493}a{color:#9ee493}</style>
+<main>${body}</main>`,
     { status: 404, headers: { 'content-type': 'text/html; charset=utf-8' } },
   );
 }
