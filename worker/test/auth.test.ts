@@ -40,6 +40,31 @@ describe('auth=google', () => {
     expect(browser.headers.get('location')).toContain('/auth/login');
   });
 
+  it('builds an https OAuth redirect_uri when TLS is terminated upstream', async () => {
+    // Behind a TLS-terminating reverse proxy that doesn't forward the scheme, the
+    // app is reached over plain http though the public origin is https. redirect_uri
+    // must be https or Google 400s with redirect_uri_mismatch.
+    const res = await fetchUrl(googleEnv, 'http://brisk.example.com/auth/login');
+    expect(res.status).toBe(302);
+    const google = new URL(res.headers.get('location')!);
+    expect(google.host).toBe('accounts.google.com');
+    expect(google.searchParams.get('redirect_uri')).toBe('https://brisk.example.com/auth/callback');
+  });
+
+  it('honors X-Forwarded-Proto and keeps localhost on http for dev', async () => {
+    const forwarded = await fetchUrl(googleEnv, 'http://brisk.example.com/auth/login', {
+      headers: { 'x-forwarded-proto': 'https' },
+    });
+    expect(new URL(forwarded.headers.get('location')!).searchParams.get('redirect_uri')).toBe(
+      'https://brisk.example.com/auth/callback',
+    );
+
+    const local = await fetchUrl(googleEnv, 'http://localhost/auth/login');
+    expect(new URL(local.headers.get('location')!).searchParams.get('redirect_uri')).toBe(
+      'http://localhost/auth/callback',
+    );
+  });
+
   it('accepts the CI deploy token and attributes it as ci@brisk', async () => {
     const res = await fetchAs(googleEnv, '/api/me', {
       headers: { authorization: 'Bearer ci-token' },

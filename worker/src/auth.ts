@@ -65,7 +65,28 @@ function visitorAllowed(method: string, pathname: string): boolean {
 
 const apexHost = (c: Context<AppEnv>): string => c.env.BASE_HOST || new URL(c.req.url).host;
 
-const apexOrigin = (c: Context<AppEnv>): string => `${new URL(c.req.url).protocol}//${apexHost(c)}`;
+/**
+ * The public scheme, for OAuth `redirect_uri`, login URLs, and the cookie
+ * `Secure` flag. Behind a TLS-terminating reverse proxy the app is reached over
+ * plain http, and not every proxy forwards the original scheme (e.g. a Tailscale
+ * ingress — tailscale/tailscale#7061), so the request's own scheme is unreliable.
+ * Trust `X-Forwarded-Proto` when a proxy does send it; otherwise assume https for
+ * any real host and keep localhost on http for local dev. Getting this wrong
+ * means `redirect_uri_mismatch` at Google.
+ */
+function apexScheme(c: Context<AppEnv>): string {
+  const forwarded = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim();
+  if (forwarded) return forwarded;
+  const url = new URL(c.req.url);
+  if (url.protocol === 'https:') return 'https';
+  const host = url.hostname;
+  const local = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+  return local ? 'http' : 'https';
+}
+
+const apexOrigin = (c: Context<AppEnv>): string => `${apexScheme(c)}://${apexHost(c)}`;
+
+const isSecure = (c: Context<AppEnv>): boolean => apexScheme(c) === 'https';
 
 /**
  * The session cookie is scoped to `.BASE_HOST`, so one login on the apex
@@ -101,7 +122,7 @@ async function writeSession(c: Context<AppEnv>, user: User): Promise<void> {
     domain: cookieDomain(c),
     path: '/',
     httpOnly: true,
-    secure: new URL(c.req.url).protocol === 'https:',
+    secure: isSecure(c),
     sameSite: 'Lax',
     maxAge: SESSION_DAYS * 86_400,
   });
@@ -245,7 +266,7 @@ export function cliConsent(): MiddlewareHandler<AppEnv> {
     setCookie(c, CLI_CSRF_COOKIE, csrf, {
       path: '/auth/cli',
       httpOnly: true,
-      secure: new URL(c.req.url).protocol === 'https:',
+      secure: isSecure(c),
       sameSite: 'Strict',
       maxAge: 600,
     });
@@ -362,7 +383,7 @@ export function authRoutes(): Hono<AppEnv> {
     setCookie(c, STATE_COOKIE, state, {
       path: '/auth',
       httpOnly: true,
-      secure: new URL(c.req.url).protocol === 'https:',
+      secure: isSecure(c),
       sameSite: 'Lax',
       maxAge: 600,
     });

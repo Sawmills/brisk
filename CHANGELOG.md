@@ -29,6 +29,12 @@ releases are published to
 
 ### Fixed
 
+- Google sign-in works behind a TLS-terminating reverse proxy. The OAuth
+  `redirect_uri` (and login URLs and the session cookie's `Secure` flag) were
+  derived from the request the app received — plain `http` when a proxy
+  terminates TLS and doesn't forward the scheme — which Google rejects with
+  `redirect_uri_mismatch`. `X-Forwarded-Proto` is now honored when present, and
+  any non-localhost host otherwise resolves as `https`.
 - Deploys are attributed to the asserted deployer, so the dashboard's "by"
   column matches the `owner` label instead of the authenticated account. On
   `AUTH=none` every request is the same `Dev` user, which made every deploy read
