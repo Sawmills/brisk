@@ -10,6 +10,9 @@ releases are published to
 
 ### Added
 
+- A provider-agnostic platform abstraction (storage, database, rooms, assets,
+  cache) behind six seams, so Brisk now runs on Node/self-host — with SQLite
+  plus S3 or the filesystem — in addition to Cloudflare, from the same core.
 - The dashboard's drag-and-drop deploy takes a "deploying as" name, so a browser
   deploy records an `owner` the way `brisk deploy --username` already does. The
   name is remembered between drops. Dropping onto a site someone else owns now
