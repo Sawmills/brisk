@@ -1,0 +1,107 @@
+# Default: a single pod, filesystem storage + SQLite on one PVC, no external
+# services. Realtime is in-process (single replica); scaling >1 needs Redis (not
+# yet shipped). Switch storage to S3 by setting config.storage=s3 + s3.*.
+replicaCount: 1
+
+image:
+  repository: ghcr.io/usebrisk/brisk
+  tag: '' # defaults to .Chart.appVersion
+  pullPolicy: IfNotPresent
+
+# Non-secret instance config (maps to env vars; see README → Configuration).
+config:
+  baseHost: '' # e.g. brisk.example.com
+  # Empty by default: the worker fails closed (503) on a public host until you
+  # make a deliberate choice. Set `google` for login, or `none` to run open on a
+  # trusted network on purpose. Never leave empty for a public Ingress.
+  auth: '' # google | none
+  visibility: private # or: public
+  deployHistory: '' # set to `on` to retain every published version; empty keeps only the live one
+  allowedEmails: ''
+  allowedEmailDomains: ''
+  storage: fs # fs | s3
+  sqlitePath: /data/brisk.sqlite
+  fsRoot: /data/objects
+
+# S3 (when config.storage=s3). Credentials go in `secrets` below.
+s3:
+  endpoint: ''
+  bucket: ''
+  region: us-east-1
+
+# Sensitive values → a Secret. Leave blank to omit. For production, prefer
+# `existingSecret` (a Secret you manage) over inlining these in values.
+secrets:
+  sessionSecret: ''
+  googleClientId: ''
+  googleClientSecret: ''
+  deployToken: ''
+  anthropicApiKey: ''
+  openaiApiKey: ''
+  s3AccessKeyId: ''
+  s3SecretAccessKey: ''
+existingSecret: '' # name of a pre-created Secret with the same keys; overrides `secrets`
+
+persistence:
+  enabled: true
+  size: 8Gi
+  storageClass: '' # '' = cluster default
+  # accessMode ReadWriteOnce suits the single-replica model.
+  accessMode: ReadWriteOnce
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ''
+  annotations: {}
+  # The apex host plus a wildcard for site subdomains (see README → Wildcard subdomains).
+  host: brisk.example.com
+  wildcard: true # also route *.{host}
+  tls:
+    enabled: false
+    secretName: brisk-tls
+
+# Liveness/readiness probe path. /auth/login 302s for a probe (non-document GET)
+# in every AUTH mode; / returns 401 to a probe under AUTH=google. Don't change
+# this to / unless you run AUTH=none.
+healthcheck:
+  path: /auth/login
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+
+podSecurityContext:
+  fsGroup: 1000 # node user — lets the pod write the PVC
+  # Only chown the volume when its root isn't already group-owned. The default
+  # (Always) recursively chowns every file on every pod start — and this volume
+  # holds the object store, so that walk grows with each site you deploy until it
+  # starts eating into the readiness window.
+  fsGroupChangePolicy: OnRootMismatch
+
+# Deny egress to the cluster's own network. Brisk hosts arbitrary uploaded
+# content and proxies AI calls, so a deployed site is untrusted code with a
+# network; this stops it reaching other pods or the node's metadata endpoint
+# (IMDS) while still allowing DNS and the public internet. Off by default
+# because it is only meaningful on a CNI that enforces NetworkPolicy — and
+# because it would block an S3 endpoint that lives *inside* the cluster (an
+# in-cluster MinIO); see README → Locking down egress.
+networkPolicy:
+  enabled: false
+  # Ranges Brisk may not open connections to. RFC1918 is where other pods live;
+  # 169.254.0.0/16 is link-local, which on AWS is the IMDS credential endpoint.
+  denyCIDRs:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+    - 169.254.0.0/16
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

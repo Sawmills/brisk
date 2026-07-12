@@ -13,6 +13,9 @@ releases are published to
 - A provider-agnostic platform abstraction (storage, database, rooms, assets,
   cache) behind six seams, so Brisk now runs on Node/self-host — with SQLite
   plus S3 or the filesystem — in addition to Cloudflare, from the same core.
+- Self-host packaging under `deploy/`: a multi-stage Dockerfile that builds and
+  runs the Node assembly, a Docker Compose stack (filesystem + SQLite by
+  default, optional MinIO for S3), and a Helm chart for Kubernetes.
 - `npm create brisk` — an interactive wizard that scaffolds a self-host
   deployment. Pick a target (Docker Compose, Kubernetes/Helm, or Cloudflare
   Workers), auth mode, and storage backend, and it writes the matching
