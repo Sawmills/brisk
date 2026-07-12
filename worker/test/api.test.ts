@@ -2,6 +2,7 @@ import { SELF, createExecutionContext, env, waitOnExecutionContext } from 'cloud
 import { describe, expect, it } from 'vitest';
 import { createApp, siteFromHost, siteUrl } from '../src/app';
 import { isValidSiteName, listDeploys } from '../src/sites';
+import { buildCloudflarePlatform } from '../src/platform/cloudflare/platform';
 
 const HOST = 'http://localhost';
 
@@ -13,12 +14,18 @@ function deployForm(files: Record<string, string>): FormData {
   return form;
 }
 
-const app = createApp();
+const app = createApp((c) => buildCloudflarePlatform(c.env, c.executionCtx));
+
+/** listDeploys takes a Platform now; wrap the shared test D1 so history reads
+ *  hit the same rows the app wrote (the throwaway ctx is only for waitUntil,
+ *  which a read never uses). */
+const listVersions = (site: string) =>
+  listDeploys(buildCloudflarePlatform(env, createExecutionContext()), site);
 
 /**
  * Deploy through the app with DEPLOY_HISTORY=on so retention is exercised; the
  * default test env leaves it unset (off). The override keeps the same DB/R2
- * bindings, so `listDeploys(env, site)` and `SELF.fetch` still see the rows.
+ * bindings, so `listVersions(site)` and `SELF.fetch` still see the rows.
  */
 async function deployWithHistory(site: string, files: Record<string, string>): Promise<Response> {
   const ctx = createExecutionContext();
@@ -122,12 +129,37 @@ describe('deploy and serve', () => {
     expect((await SELF.fetch(`${HOST}/s/swap/old.txt`)).status).toBe(404);
   });
 
+  it('tells a missing path apart from a missing site', async () => {
+    await SELF.fetch(`${HOST}/api/deploy/live`, {
+      method: 'POST',
+      body: deployForm({ 'index.html': '<h1>live</h1>' }),
+    });
+
+    // The site exists — a bad path must not invite a deploy that would overwrite it.
+    const missingPath = await SELF.fetch(`${HOST}/s/live/nope`);
+    expect(missingPath.status).toBe(404);
+    const livePage = await missingPath.text();
+    expect(livePage).toContain('is live');
+    expect(livePage).not.toContain('brisk deploy --site');
+
+    // No such site — here the claim instructions are the right answer.
+    const missingSite = await SELF.fetch(`${HOST}/s/ghost/`);
+    expect(missingSite.status).toBe(404);
+    expect(await missingSite.text()).toContain('brisk deploy --site ghost');
+
+    // Same split on the subdomain route.
+    const subMissingPath = await SELF.fetch('http://live.localhost/nope');
+    expect(await subMissingPath.text()).toContain('is live');
+    const subMissingSite = await SELF.fetch('http://ghost.localhost/');
+    expect(await subMissingSite.text()).toContain('brisk deploy --site ghost');
+  });
+
   it('retains every publish as an immutable version, newest first', async () => {
     // DEPLOY_HISTORY=on: both publishes are kept (this also covers the on-retains knob).
     await deployWithHistory('ver', { 'index.html': 'first' });
     await deployWithHistory('ver', { 'index.html': 'second' });
 
-    const deploys = await listDeploys(env, 'ver');
+    const deploys = await listVersions('ver');
     expect(deploys).toHaveLength(2);
     expect(deploys.map((d) => d.version)).toEqual([2, 1]);
 
@@ -142,7 +174,7 @@ describe('deploy and serve', () => {
     );
     // The UNIQUE(site,version) index plus the retry-on-collision insert must
     // yield contiguous, non-duplicated versions no matter how the writes interleave.
-    const deploys = await listDeploys(env, 'race');
+    const deploys = await listVersions('race');
     expect(deploys).toHaveLength(3);
     expect(deploys.map((d) => d.version).sort((a, b) => a - b)).toEqual([1, 2, 3]);
   });
@@ -158,7 +190,7 @@ describe('deploy and serve', () => {
     });
 
     // The superseded row is deleted synchronously, so history holds only v2.
-    const deploys = await listDeploys(env, 'bounded');
+    const deploys = await listVersions('bounded');
     expect(deploys).toHaveLength(1);
     expect(deploys[0]!.version).toBe(2);
 
@@ -173,13 +205,13 @@ describe('deploy and serve', () => {
     });
     const del = await SELF.fetch(`${HOST}/api/sites/reborn`, { method: 'DELETE' });
     expect(del.status).toBe(200);
-    expect(await listDeploys(env, 'reborn')).toHaveLength(0);
+    expect(await listVersions('reborn')).toHaveLength(0);
 
     await SELF.fetch(`${HOST}/api/deploy/reborn`, {
       method: 'POST',
       body: deployForm({ 'index.html': 'again' }),
     });
-    const deploys = await listDeploys(env, 'reborn');
+    const deploys = await listVersions('reborn');
     expect(deploys).toHaveLength(1);
     expect(deploys.map((d) => d.version)).toEqual([1]);
   });
@@ -235,6 +267,23 @@ describe('site ownership', () => {
 
   const ownerOf = async (name: string): Promise<string | null> =>
     (await (await SELF.fetch(`${HOST}/api/sites/${name}`)).json<{ owner: string | null }>()).owner;
+
+  const updatedByOf = async (name: string): Promise<string | null> =>
+    (await (await SELF.fetch(`${HOST}/api/sites/${name}`)).json<{ updatedBy: string | null }>())
+      .updatedBy;
+
+  it('attributes the deploy to the asserted deployer, not the auth identity', async () => {
+    // On AUTH=none every request resolves to the same 'Dev' user, so the asserted
+    // name is the only human attribution there is — it must drive updatedBy (the
+    // dashboard's "by" column), not just the set-once owner.
+    expect((await deployAs('attributed', 'alice')).status).toBe(200);
+    expect(await updatedByOf('attributed')).toBe('alice');
+
+    // A later deployer becomes the latest 'by', even as the owner stays alice.
+    expect((await deployAs('attributed', 'bob', true)).status).toBe(200);
+    expect(await updatedByOf('attributed')).toBe('bob');
+    expect(await ownerOf('attributed')).toBe('alice');
+  });
 
   it('records the deployer as owner and guards overwrites by others', async () => {
     // alice claims the site — she becomes its owner.

@@ -3,8 +3,9 @@ import { sign } from 'hono/jwt';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
 import { isAllowedEmail } from '../src/auth';
+import { buildCloudflarePlatform } from '../src/platform/cloudflare/platform';
 
-const app = createApp();
+const app = createApp((c) => buildCloudflarePlatform(c.env, c.executionCtx));
 
 /** The deployed test env runs AUTH=none; override per request to test google mode. */
 const googleEnv = {
@@ -246,5 +247,38 @@ describe('AUTH unset (secure by default)', () => {
       'https://brisk.example.com/api/me',
     );
     expect(res.status).toBe(200);
+  });
+});
+
+describe('AUTH typos never silently open (fail closed)', () => {
+  const withAuth = (auth: string) => ({ ...env, AUTH: auth }) as unknown as typeof env;
+
+  // Only a literal `google`/`none` is honored. A mis-cased (`Google`) or
+  // misspelled (`googl`) value must NOT slip past the `=== 'google'` gate into
+  // an open, anonymously-writable backend on a public host — it fails closed
+  // with the same 503 as an unset AUTH.
+  for (const typo of ['Google', 'GOOGLE', 'googl', 'None', 'nonsense']) {
+    it(`503s a public host for AUTH=${JSON.stringify(typo)}`, async () => {
+      const res = await fetchUrl(withAuth(typo), 'https://brisk.example.com/api/me');
+      expect(res.status).toBe(503);
+      expect(await res.text()).toContain('Refusing to serve an open backend');
+    });
+  }
+
+  // The tightening must not break local dev: a typo on localhost still gets the
+  // trusted dev identity, exactly like an unset AUTH did.
+  it('still grants the dev identity for a typo on localhost', async () => {
+    const res = await fetchUrl(withAuth('Google'), 'http://localhost/api/me');
+    expect(res.status).toBe(200);
+  });
+
+  // Whitespace is the common dashboard/.env footgun: a stray space is trimmed,
+  // so `AUTH=google ` means google — login required (401), never an open 200.
+  it('trims whitespace so "google " requires login, not an open backend', async () => {
+    const res = await fetchUrl(
+      { ...googleEnv, AUTH: 'google ' } as unknown as typeof env,
+      'https://brisk.example.com/api/me',
+    );
+    expect(res.status).toBe(401);
   });
 });
