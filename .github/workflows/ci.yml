@@ -18,5 +18,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm typecheck
-      - run: pnpm --filter @usebrisk/worker test
+      # Recursive, not a per-package filter: create-brisk shipped with tests that
+      # nothing ran, and the next package would have been just as invisible.
+      - run: pnpm -r test
       - run: pnpm format:check

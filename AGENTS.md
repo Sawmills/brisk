@@ -10,15 +10,27 @@ before touching the worker.
 pnpm monorepo. Per-package guides hold the non-obvious details — read the one
 for the package you're changing:
 
-| Package     | What                                                                  | Guide                                |
-| ----------- | --------------------------------------------------------------------- | ------------------------------------ |
-| `worker/`   | The whole platform: one Cloudflare Worker + R2 + D1 + Durable Objects | [worker/AGENTS.md](worker/AGENTS.md) |
-| `sdk/`      | Zero-dep browser client, served at `/brisk.js`                        | [sdk/AGENTS.md](sdk/AGENTS.md)       |
-| `cli/`      | `brisk` command: deploy, dev, pull, login + profiles; zero deps       | [cli/AGENTS.md](cli/AGENTS.md)       |
-| `examples/` | Complete deployable sites; keep them tiny and dependency-free         | —                                    |
+| Package         | What                                                                  | Guide                                            |
+| --------------- | --------------------------------------------------------------------- | ------------------------------------------------ |
+| `worker/`       | The whole platform: one Cloudflare Worker + R2 + D1 + Durable Objects | [worker/AGENTS.md](worker/AGENTS.md)             |
+| `sdk/`          | Zero-dep browser client, served at `/brisk.js`                        | [sdk/AGENTS.md](sdk/AGENTS.md)                   |
+| `cli/`          | `brisk` command: deploy, dev, pull, login + profiles; zero deps       | [cli/AGENTS.md](cli/AGENTS.md)                   |
+| `create-brisk/` | `npm create brisk` — scaffolds an instance's deployment config        | [create-brisk/AGENTS.md](create-brisk/AGENTS.md) |
+| `examples/`     | Complete deployable sites; keep them tiny and dependency-free         | —                                                |
 
 The realtime wire protocol is shared between worker and sdk:
 [docs/realtime-protocol.md](docs/realtime-protocol.md).
+
+**Adding an instance env var — touch all of these, or it silently doesn't
+exist.** Every field on `Env` is optional, so a missed step is `undefined` at
+runtime, not a compile error:
+
+`worker/src/env.ts` (`Env`) → `worker/.dev.vars.example` → `README.md`'s config
+table → the deployment config in `deploy/` → `create-brisk/src/answers.ts`
+(`CONFIG_VARS` / `SECRET_VARS`) and every emitter in `create-brisk/src/generate.ts`.
+
+`create-brisk`'s `test/env-parity.test.ts` fails the build if `Env` and that last
+step drift, which is the only link in the chain a machine checks for you.
 
 ## Commands
 
