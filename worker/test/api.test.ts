@@ -70,8 +70,11 @@ describe('host routing', () => {
 });
 
 describe('site urls', () => {
-  const conn = (reqUrl: string, BASE_HOST: string) =>
-    siteUrl({ env: { BASE_HOST } as never, req: { url: reqUrl } }, 'foo');
+  const conn = (reqUrl: string, BASE_HOST: string, headers: Record<string, string> = {}) =>
+    siteUrl(
+      { env: { BASE_HOST } as never, req: { url: reqUrl, header: (n: string) => headers[n] } },
+      'foo',
+    );
 
   it('uses subdomain form only when reached via BASE_HOST', () => {
     expect(conn('https://brisk.example.com/api/sites', 'brisk.example.com')).toBe(
@@ -90,6 +93,60 @@ describe('site urls', () => {
       'https://brisk.acme.workers.dev/s/foo/',
     );
     expect(conn('http://localhost:8787/api/sites', '')).toBe('http://localhost:8787/s/foo/');
+  });
+
+  it('links https when TLS is terminated upstream', () => {
+    // The proxy reaches the worker over plain http, so the request's own scheme
+    // would hand out an http:// link to an https-only site — the URL the CLI
+    // prints and the dashboard links to right after a deploy.
+    expect(conn('http://brisk.example.com/api/deploy/foo', 'brisk.example.com')).toBe(
+      'https://foo.brisk.example.com/',
+    );
+    expect(conn('http://brisk.acme.dev/api/deploy/foo', '')).toBe('https://brisk.acme.dev/s/foo/');
+  });
+
+  it('honors X-Forwarded-Proto over the guess, but only http and https', () => {
+    const forwarded = (proto: string) =>
+      conn('http://brisk.example.com/api/sites', 'brisk.example.com', {
+        'x-forwarded-proto': proto,
+      });
+    expect(forwarded('https')).toBe('https://foo.brisk.example.com/');
+    expect(forwarded('http')).toBe('http://foo.brisk.example.com/');
+    expect(forwarded('HTTPS, http')).toBe('https://foo.brisk.example.com/');
+
+    // Nothing strips this header on an instance no proxy fronts, and the url
+    // lands in an <a href> on the dashboard: a client-chosen scheme must not.
+    expect(forwarded('javascript:alert(document.domain);//')).toBe(
+      'https://foo.brisk.example.com/',
+    );
+    expect(forwarded('')).toBe('https://foo.brisk.example.com/');
+  });
+
+  it('keeps a plain-http instance on http when TLS is implausible', () => {
+    // A self-hosted box reached over http with no proxy in front: guessing https
+    // hands out links that don't resolve. No public certificate can name a bare
+    // IP or a private-use TLD, so neither is a hidden-TLS candidate.
+    expect(conn('http://10.0.0.5:8787/api/sites', '')).toBe('http://10.0.0.5:8787/s/foo/');
+    expect(conn('http://[fd00::1]:8787/api/sites', '')).toBe('http://[fd00::1]:8787/s/foo/');
+    expect(conn('http://site.localhost:8787/api/sites', '')).toBe(
+      'http://site.localhost:8787/s/foo/',
+    );
+    expect(conn('http://brisk.acme.internal:8788/api/sites', '')).toBe(
+      'http://brisk.acme.internal:8788/s/foo/',
+    );
+    expect(conn('http://brisk.acme.internal/api/sites', 'brisk.acme.internal')).toBe(
+      'http://foo.brisk.acme.internal/',
+    );
+    expect(conn('http://brisk.home.arpa/api/sites', '')).toBe('http://brisk.home.arpa/s/foo/');
+  });
+
+  it('judges the host the link names, not the one the request arrived on', () => {
+    // A bare `proxy_pass` rewrites Host to the backend address. The path-form
+    // link names that IP, so it stays http — while the OAuth origin, which
+    // names BASE_HOST, does not (see auth.test.ts).
+    expect(conn('http://10.0.0.5:8788/api/sites', 'brisk.example.com')).toBe(
+      'http://10.0.0.5:8788/s/foo/',
+    );
   });
 });
 
@@ -120,6 +177,74 @@ describe('deploy and serve', () => {
     // extensionless resolution
     const about = await SELF.fetch(`${HOST}/s/greet/about`);
     expect(stripWidgets(await about.text())).toBe('<h1>about</h1>');
+  });
+
+  it('serves a lone html page at the root and under its own name', async () => {
+    await SELF.fetch(`${HOST}/api/deploy/findings`, {
+      method: 'POST',
+      body: deployForm({ 'db-contention-findings.html': '<h1>findings</h1>' }),
+    });
+
+    const root = await SELF.fetch(`${HOST}/s/findings/`);
+    expect(root.status).toBe(200);
+    expect(stripWidgets(await root.text())).toBe('<h1>findings</h1>');
+
+    const subdomain = await SELF.fetch('http://findings.localhost/');
+    expect(stripWidgets(await subdomain.text())).toBe('<h1>findings</h1>');
+
+    const own = await SELF.fetch(`${HOST}/s/findings/db-contention-findings.html`);
+    expect(stripWidgets(await own.text())).toBe('<h1>findings</h1>');
+  });
+
+  it('serves a lone .htm page as html, widgets and all', async () => {
+    // The fallback matches .htm, so the mime table has to as well: stored as
+    // application/octet-stream the browser downloads the page instead of
+    // rendering it, and widget injection skips anything that isn't text/html.
+    await SELF.fetch(`${HOST}/api/deploy/oldschool`, {
+      method: 'POST',
+      body: deployForm({ 'report.HTM': '<h1>legacy</h1>' }),
+    });
+
+    const root = await SELF.fetch(`${HOST}/s/oldschool/`);
+    expect(root.status).toBe(200);
+    expect(root.headers.get('content-type')).toBe('text/html; charset=utf-8');
+    const html = await root.text();
+    expect(html).toContain('/_plugins/');
+    expect(stripWidgets(html)).toBe('<h1>legacy</h1>');
+  });
+
+  it('leaves the root a 404 when which page is home is a guess', async () => {
+    // Two top-level pages, or one buried in a folder: no obvious front door, so
+    // the site keeps saying so instead of picking for you.
+    await SELF.fetch(`${HOST}/api/deploy/pair`, {
+      method: 'POST',
+      body: deployForm({ 'a.html': 'a', 'b.html': 'b' }),
+    });
+    const pair = await SELF.fetch(`${HOST}/s/pair/`);
+    expect(pair.status).toBe(404);
+    expect(await pair.text()).toContain('is live');
+
+    await SELF.fetch(`${HOST}/api/deploy/nested`, {
+      method: 'POST',
+      body: deployForm({ 'docs/page.html': 'buried' }),
+    });
+    expect((await SELF.fetch(`${HOST}/s/nested/`)).status).toBe(404);
+  });
+
+  it('returns an https url from a deploy behind a TLS-terminating proxy', async () => {
+    const ctx = createExecutionContext();
+    const res = await app.fetch(
+      new Request('http://brisk.example.com/api/deploy/proxied', {
+        method: 'POST',
+        body: deployForm({ 'index.html': '<h1>hi</h1>' }),
+      }),
+      { ...env, BASE_HOST: 'brisk.example.com' },
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    expect(await res.json<{ url: string }>()).toMatchObject({
+      url: 'https://proxied.brisk.example.com/',
+    });
   });
 
   it('atomically replaces the previous deploy', async () => {

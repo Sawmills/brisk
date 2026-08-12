@@ -8,6 +8,42 @@ releases are published to
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-11
+
+### Added
+
+- **Deploy a single HTML file.** `brisk deploy report.html` (and `brisk dev`)
+  publishes a one-page site named after the file, and dropping one file on the
+  dashboard names the site the same way. A deploy whose only top-level page is
+  one HTML file serves it at `/` as well as under its own name, instead of
+  landing on "there's no page at /". Two or more top-level pages stay a 404 —
+  which one is home would be a guess. Deploying a single file that isn't a page
+  links to the file itself and says so, rather than pointing at a root that has
+  nothing to serve.
+
+### Fixed
+
+- `.htm` pages are served as `text/html` instead of `application/octet-stream`,
+  so browsers render them (and plugin widgets load on them) rather than
+  downloading the file.
+- Dismissing the dashboard's deploy overlay clears the pending overwrite, so a
+  later drop can no longer replace a site someone else owns without the
+  "belongs to …" confirmation.
+- Site URLs (the link the CLI prints after a deploy, the dashboard's live link,
+  and `/api/sites`) are `https://` on an instance behind a TLS-terminating
+  proxy, instead of the plain-http scheme the request reached the server with.
+  `X-Forwarded-Proto` decides it when a proxy sends one, but only when it
+  carries `http` or `https`, and the visitor cache varies by the result — so no
+  single visitor's header can rewrite the links everyone else is handed.
+  The guess is made against the host each URL actually names, so a proxy that
+  rewrites `Host` to a backend address no longer produces an `http://` OAuth
+  `redirect_uri` for an https instance. Where a public certificate can't reach —
+  loopback, bare IPs, and the private-use TLDs `.internal`, `.local`,
+  `.home.arpa` — links stay on http. `deploy/README.md` documents the order and
+  the one case that still needs `X-Forwarded-Proto`.
+
+## [0.4.0] - 2026-07-29
+
 ### Added
 
 - **Plugins** — a curated, forkable layer of first-party features a site opts
@@ -24,6 +60,17 @@ releases are published to
   the toolbar for the command menu. Typing in the widget never triggers the
   host page's own shortcuts. Minimize it to a corner bubble (click to reopen);
   `Shift+C` fully hides it.
+
+### Changed
+
+- The `/host` page now covers the self-hosted path (Docker Compose,
+  Kubernetes/Helm, `npm create brisk`, storage options) alongside Cloudflare,
+  instead of documenting the Worker deploy only.
+
+### Fixed
+
+- The `/changelog` page renders `**bold**` in entries instead of showing the
+  literal asterisks.
 
 ## [0.3.0] - 2026-07-13
 
@@ -140,7 +187,9 @@ releases are published to
 - `@usebrisk/cli` and `@usebrisk/sdk` published to npm, cut in lockstep by a
   tag-driven release workflow.
 
-[unreleased]: https://github.com/tomperi/brisk/compare/v0.3.0...HEAD
+[unreleased]: https://github.com/tomperi/brisk/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/tomperi/brisk/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/tomperi/brisk/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/tomperi/brisk/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/tomperi/brisk/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/tomperi/brisk/releases/tag/v0.1.0
