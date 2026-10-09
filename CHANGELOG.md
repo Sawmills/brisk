@@ -8,6 +8,10 @@ releases are published to
 
 ## [Unreleased]
 
+### Added
+
+- Brisk agent page with browser storage, manual content checks, and direct Agent Platform runs.
+
 ## [0.4.1] - 2026-08-11
 
 ### Added

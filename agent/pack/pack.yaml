@@ -1,0 +1,38 @@
+name: brisk-agent
+skills: []
+prompts: []
+tools: []
+extensions: []
+model: saw10802-terra@1
+modelRouting:
+  candidates:
+    gather: saw10802-terra@1
+    explain: claude-sonnet-5@1
+egress:
+  default: []
+secrets: []
+sandbox: tier4-gvisor
+isolation: per-namespace
+compiledAgents:
+  brisk-agent:
+    tools:
+      [
+        spill,
+        read_tool_output,
+        read_skill,
+        search_tool_output,
+        aggregate_tool_output,
+        save_artifact,
+        brisk_capabilities,
+        brisk_list_sources,
+        brisk_read_source,
+      ]
+    spawnGrants: []
+    codemode:
+      {
+        maxToolCalls: 12,
+        timeoutMs: 30000,
+        maxSourceBytes: 8192,
+        maxOutputBytes: 65536,
+        maxOutputTokens: 16000,
+      }

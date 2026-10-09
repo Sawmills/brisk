@@ -1,0 +1,5 @@
+{
+  "name": "brisk-agent",
+  "server": "https://brisk.sm-svc.com",
+  "plugins": { "comments": false }
+}
