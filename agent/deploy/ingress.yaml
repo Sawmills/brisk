@@ -1,0 +1,27 @@
+# Static files remain on Brisk's existing wildcard ingress.
+# This internal route adds browser access without CORS or a companion process.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: brisk-agent-platform
+  namespace: agent-platform
+  annotations:
+    alb.ingress.kubernetes.io/backend-protocol: HTTP
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/healthcheck-port: "8086"
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/group.order: "-1"
+spec:
+  ingressClassName: alb
+  rules:
+    - host: brisk-agent.brisk.sm-svc.com
+      http:
+        paths:
+          - path: /v1/agent-runs
+            pathType: Prefix
+            backend:
+              service:
+                name: agentruns
+                port: { number: 80 }

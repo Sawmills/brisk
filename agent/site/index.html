@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Search Brisk, find useful work, and follow changes." />
+    <title>Brisk Agent</title>
+    <link rel="stylesheet" href="./style.css" />
+    <script src="./app.js" type="module"></script>
+  </head>
+  <body>
+    <aside class="sidebar">
+      <a class="brand" href="https://brisk.sm-svc.com/"
+        ><span class="brand-mark">b</span> brisk <span class="brand-tag">agent</span></a
+      >
+      <div class="workspace-label">YOUR WORKSPACE GUIDE</div>
+      <nav aria-label="Views">
+        <button data-view="discover" class="selected"><span>✳</span> Discover</button>
+        <button data-view="search"><span>⌕</span> Search</button>
+        <button data-view="following">
+          <span>☆</span> Following <small id="follow-count">0</small>
+        </button>
+        <button data-view="changes">
+          <span>↗</span> Changes <small id="change-count">0</small>
+        </button>
+      </nav>
+      <div class="conversation-controls">
+        <label for="conversation">CONVERSATIONS</label
+        ><select id="conversation" aria-label="Saved conversation"></select
+        ><button id="new-conversation" class="secondary">+ New conversation</button>
+      </div>
+      <div class="sidebar-bottom">
+        <span class="status-dot"></span><span id="service-status">Connecting</span>
+        <p>Follows and conversations stay here.<br />This browser profile has no sign-in.</p>
+        <a href="https://brisk.sm-svc.com/">Open Brisk ↗</a>
+      </div>
+    </aside>
+    <main>
+      <header>
+        <div class="breadcrumb">BRISK / <span id="view-name">DISCOVER</span></div>
+        <div>
+          <span class="scan-label" id="scan-status">Manual content checks</span>
+          <button id="check-button" class="secondary">Check sources</button>
+        </div>
+      </header>
+      <section class="hero">
+        <div class="eyebrow">A GUIDE TO THE WORK AROUND YOU</div>
+        <h1 id="heading">Find your next useful read.</h1>
+        <p id="subheading">Search your team's work. Follow the subjects that matter to you.</p>
+        <form id="search-form" class="search-box">
+          <label class="sr-only" for="query">Search Brisk or ask the agent</label
+          ><span aria-hidden="true">⌕</span
+          ><input
+            id="query"
+            maxlength="500"
+            placeholder="Find reports, explore a topic, or ask a question…"
+            autocomplete="off"
+          /><button type="submit" class="secondary">Search</button
+          ><button id="ask-button" type="button" class="primary" disabled>
+            Ask agent <span>↗</span>
+          </button>
+        </form>
+        <div class="suggestions">
+          <span>TRY A TOPIC</span><button data-query="Agent Platform">Agent Platform</button
+          ><button data-query="model costs">Model costs</button
+          ><button data-query="Melio">Melio</button>
+        </div>
+      </section>
+      <div id="notice" role="status" hidden></div>
+      <section id="agent-panel" hidden aria-label="Agent answer">
+        <div class="section-head">
+          <h2>Agent answer</h2>
+          <span id="run-status" class="pill">Starting</span>
+        </div>
+        <div id="answer" aria-live="polite"></div>
+        <details>
+          <summary>Run progress</summary>
+          <ol id="progress"></ol>
+        </details>
+        <form id="instruction-form">
+          <label class="sr-only" for="instruction">Adjust the focus</label
+          ><input
+            id="instruction"
+            maxlength="1000"
+            placeholder="Adjust the focus while the agent works…"
+          /><button class="secondary">Update focus</button>
+        </form>
+        <div id="answer-sources"></div>
+      </section>
+      <section class="content-section">
+        <div class="section-head">
+          <div>
+            <h2 id="section-title">Worth a look</h2>
+            <p id="section-caption">Recent sources from across Brisk.</p>
+          </div>
+          <span id="result-count" class="pill"></span>
+        </div>
+        <form id="follow-form" hidden>
+          <select id="follow-kind" aria-label="Follow type">
+            <option value="topic">Topic</option>
+            <option value="site">Site</option></select
+          ><input
+            id="follow-value"
+            required
+            maxlength="160"
+            placeholder="For example: model routing"
+            aria-label="Site name or topic"
+          /><button class="primary">Follow</button>
+        </form>
+        <label id="changes-filter" hidden
+          ><input type="checkbox" id="all-changes" /> Show changes from all sites</label
+        >
+        <div id="results" class="cards" aria-live="polite">
+          <div class="empty">Loading Brisk sources…</div>
+        </div>
+      </section>
+      <footer>
+        <span id="index-status">Content stays in this browser.</span
+        ><span>Sources, not guesses. Every finding links back.</span>
+      </footer>
+    </main>
+  </body>
+</html>
