@@ -670,3 +670,31 @@ footer {
     display: none;
   }
 }
+
+#answer p {
+  margin: 0 0 0.75rem;
+}
+#answer p:last-child {
+  margin-bottom: 0;
+}
+#answer h3 {
+  margin: 0.5rem 0;
+  font-size: 1.05rem;
+}
+#answer ul,
+#answer ol {
+  margin: 0.25rem 0 0.75rem 1.25rem;
+  padding: 0;
+}
+#answer code {
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+  background: var(--surface-strong);
+  font-size: 0.9em;
+}
+
+.search-help {
+  margin-top: 0.45rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}

@@ -86,7 +86,11 @@ try {
   await page.waitForFunction(() => document.querySelector('#follow-count').textContent === '1');
   assert.equal(reads, 1, 'Reload must use the saved browser index');
   await page.locator('#query').fill('Terra costs');
-  await page.locator('#ask-button').click();
+  await page.locator('#query').press('Enter');
+  await page.waitForFunction(
+    () => document.querySelector('#section-title').textContent === 'Search results',
+  );
+  await page.locator('#query').press('Control+Enter');
   await page.waitForFunction(() =>
     document.querySelector('#notice').textContent.includes('Failed to fetch'),
   );

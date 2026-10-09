@@ -297,14 +297,70 @@ async function status() {
   if (incomplete)
     notice(`${incomplete} checks have incomplete coverage. Some source text is missing.`);
 }
+function inlineMarkdown(text) {
+  const fragment = document.createDocumentFragment();
+  const pattern =
+    /(\*\*([^*]+)\*\*|__([^_]+)__|`([^`]+)`|\[([^\]]+)\]\((https:\/\/[^\s)]+)\)|(https:\/\/[^\s)<>]+))/g;
+  let cursor = 0;
+  for (const match of text.matchAll(pattern)) {
+    fragment.append(document.createTextNode(text.slice(cursor, match.index)));
+    if (match[2] || match[3]) {
+      const strong = document.createElement('strong');
+      strong.textContent = match[2] || match[3];
+      fragment.append(strong);
+    } else if (match[4]) {
+      const code = document.createElement('code');
+      code.textContent = match[4];
+      fragment.append(code);
+    } else if (match[5] && match[6]) {
+      fragment.append(sourceLink(match[6], match[5]));
+    } else {
+      fragment.append(sourceLink(match[7], match[7]));
+    }
+    cursor = match.index + match[0].length;
+  }
+  fragment.append(document.createTextNode(text.slice(cursor)));
+  return fragment;
+}
 function answerText(text) {
-  const result = document.createDocumentFragment();
-  const parts = text.split(/(https:\/\/[^\s)\]>]+)/g);
-  for (const part of parts)
-    result.append(
-      part.startsWith('https://') ? sourceLink(part, part) : document.createTextNode(part),
-    );
-  $('answer').replaceChildren(result);
+  const fragment = document.createDocumentFragment();
+  const lines = String(text).split('\n');
+  let list;
+  const closeList = () => {
+    if (list) {
+      fragment.append(list);
+      list = null;
+    }
+  };
+  for (const line of lines) {
+    const heading = line.match(/^#{1,3}\s+(.+)$/);
+    const bullet = line.match(/^[-*]\s+(.+)$/);
+    const numbered = line.match(/^\d+[.)]\s+(.+)$/);
+    if (heading) {
+      closeList();
+      const h = document.createElement('h3');
+      h.append(inlineMarkdown(heading[1]));
+      fragment.append(h);
+      continue;
+    }
+    if (bullet || numbered) {
+      if (!list || list.tagName.toLowerCase() !== (bullet ? 'ul' : 'ol')) {
+        closeList();
+        list = document.createElement(bullet ? 'ul' : 'ol');
+      }
+      const item = document.createElement('li');
+      item.append(inlineMarkdown((bullet || numbered)[1]));
+      list.append(item);
+      continue;
+    }
+    closeList();
+    if (!line.trim()) continue;
+    const paragraph = document.createElement('p');
+    paragraph.append(inlineMarkdown(line));
+    fragment.append(paragraph);
+  }
+  closeList();
+  $('answer').replaceChildren(fragment);
 }
 async function progress(id, signal) {
   const response = await platform.events(id, signal);
@@ -443,6 +499,14 @@ $('ask-button').onclick = () =>
     notice(e.message);
     $('ask-button').disabled = !state.agentReady;
   });
+$('query').onkeydown = (event) => {
+  if (event.key !== 'Enter' || (!event.ctrlKey && !event.metaKey)) return;
+  event.preventDefault();
+  ask().catch((e) => {
+    notice(e.message);
+    $('ask-button').disabled = !state.agentReady;
+  });
+};
 $('check-button').onclick = () => checkSources().catch((e) => notice(e.message));
 $('all-changes').onchange = () => render().catch((e) => notice(e.message));
 $('follow-form').onsubmit = async (event) => {

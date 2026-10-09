@@ -54,12 +54,16 @@
             id="query"
             maxlength="500"
             placeholder="Find reports, explore a topic, or ask a question…"
+            aria-describedby="search-help"
             autocomplete="off"
           /><button type="submit" class="secondary">Search</button
           ><button id="ask-button" type="button" class="primary" disabled>
             Ask agent <span>↗</span>
           </button>
         </form>
+        <div id="search-help" class="search-help">
+          Enter searches. Ctrl+Enter or Cmd+Enter asks the agent.
+        </div>
         <div class="suggestions">
           <span>TRY A TOPIC</span><button data-query="Agent Platform">Agent Platform</button
           ><button data-query="model costs">Model costs</button
