@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: namespace-profile-sawmills-runner
+    runs-on: namespace-profile-sawmills-runner;overrides.cache-tag=brisk-release
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v6
