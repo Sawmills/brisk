@@ -1,0 +1,13 @@
+# Apply this strategic merge patch only to the staging playground worker.
+spec:
+  template:
+    spec:
+      containers:
+        - name: worker
+          env:
+            - name: LITELLM_KEY_BRISK_AGENT
+              valueFrom:
+                secretKeyRef:
+                  name: worker-litellm-brisk-agent
+                  key: LITELLM_KEY_BRISK_AGENT
+                  optional: false

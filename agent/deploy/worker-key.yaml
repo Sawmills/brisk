@@ -1,0 +1,18 @@
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: worker-litellm-brisk-agent
+  namespace: agent-platform
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: aws-parameter-store
+    kind: ClusterSecretStore
+  target:
+    name: worker-litellm-brisk-agent
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  data:
+    - secretKey: LITELLM_KEY_BRISK_AGENT
+      remoteRef:
+        key: /app/litellm/keys/brisk-agent/playground

@@ -1,0 +1,14 @@
+{
+  "name": "@usebrisk/agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "node scripts/check.mjs",
+    "typecheck": "node scripts/check.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}

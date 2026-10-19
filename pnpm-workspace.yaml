@@ -3,3 +3,4 @@ packages:
   - sdk
   - cli
   - create-brisk
+  - agent
