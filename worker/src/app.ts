@@ -33,9 +33,9 @@ import { PLUGIN_COLLECTION_PREFIX, type Plugin } from './plugins/types';
 
 const MAX_DEPLOY_FILES = 2000;
 
-/** A site's files (one deploy) and any single upload both cap at 10 MB — keeps
+/** A site's files (one deploy) and any single upload both cap at 50 MB — keeps
  *  a leaked token or runaway script from filling the R2 free tier. */
-const MAX_SITE_BYTES = 10 * 1024 * 1024;
+const MAX_SITE_BYTES = 50 * 1024 * 1024;
 const tooLarge = (bytes: number): boolean => bytes > MAX_SITE_BYTES;
 
 /** Every File in the form's `files` field, whatever Hono parsed it into. */
@@ -268,7 +268,7 @@ export function createApp(
     const files = formFiles(await c.req.parseBody({ all: true }));
     if (!files.length) return c.json({ error: 'no files in form field "files"' }, 400);
     if (tooLarge(files.reduce((n, f) => n + f.size, 0))) {
-      return c.json({ error: 'upload too large (max 10 MB)' }, 413);
+      return c.json({ error: 'upload too large (max 50 MB)' }, 413);
     }
 
     const uploaded = await Promise.all(
@@ -379,7 +379,7 @@ export function createApp(
       return c.json({ error: `too many files (max ${MAX_DEPLOY_FILES})` }, 400);
     }
     if (tooLarge(files.reduce((n, { file }) => n + file.size, 0))) {
-      return c.json({ error: 'site too large (max 10 MB)' }, 413);
+      return c.json({ error: 'site too large (max 50 MB)' }, 413);
     }
 
     // The self-asserted deployer identity (spoofable by design). On AUTH=none

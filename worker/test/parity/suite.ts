@@ -1,5 +1,33 @@
 import { describe, expect, it } from 'vitest';
 
+/** The cap counts file bytes across the multipart form, not request overhead. */
+export function runUploadLimitParity(
+  send: (path: string, body: FormData) => Promise<Response>,
+): void {
+  it.each([
+    ['/api/deploy/size-limit', 'site'],
+    ['/api/fs/upload', 'upload'],
+  ])('accepts 50 MB and refuses one extra byte at %s', async (path, kind) => {
+    const form = (extra: number): FormData => {
+      const body = new FormData();
+      body.append('files', new File([new Uint8Array(25 * 1024 * 1024)], 'first.bin'));
+      body.append('files', new File([new Uint8Array(25 * 1024 * 1024 + extra)], 'second.bin'));
+      return body;
+    };
+    const accepted = await send(path, form(0));
+    expect(accepted.status).toBe(200);
+    const result = await accepted.json();
+    if (kind === 'site') {
+      expect(result).toMatchObject({ files: 2, bytes: 52_428_800 });
+    } else {
+      expect(result).toMatchObject({ files: [{ size: 26_214_400 }, { size: 26_214_400 }] });
+    }
+    const refused = await send(path, form(1));
+    expect(refused.status).toBe(413);
+    expect(await refused.json()).toEqual({ error: `${kind} too large (max 50 MB)` });
+  });
+}
+
 /** HTTP assertions that must hold identically on every runtime. `base` is the
  *  server origin, e.g. http://127.0.0.1:54321. Mirrors api.test.ts (the worker
  *  reference) so the Node assembly is proven equivalent. */

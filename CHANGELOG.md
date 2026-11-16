@@ -8,6 +8,11 @@ releases are published to
 
 ## [Unreleased]
 
+### Changed
+
+- Raise the site deployment and file-upload limit from 10 MB to 50 MB, matching
+  the dashboard's existing site-size limit.
+
 ## [0.4.1] - 2026-08-11
 
 ### Added

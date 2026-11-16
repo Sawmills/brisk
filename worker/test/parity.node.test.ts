@@ -10,7 +10,12 @@ import { createFsStorage } from '../src/platform/node/storage-fs';
 import { configFromEnv } from '../src/platform/node/config';
 import { listDeploys } from '../src/sites';
 import type { Platform } from '../src/platform/types';
-import { runDeployParity, runHttpParity, runRealtimeParity } from './parity/suite';
+import {
+  runDeployParity,
+  runHttpParity,
+  runRealtimeParity,
+  runUploadLimitParity,
+} from './parity/suite';
 
 let server: Server;
 let historyServer: Server;
@@ -75,6 +80,7 @@ afterAll(async () => {
 });
 
 runHttpParity(() => base);
+runUploadLimitParity((path, body) => fetch(`${base}${path}`, { method: 'POST', body }));
 runRealtimeParity(() => base);
 runDeployParity({
   base: () => base,
