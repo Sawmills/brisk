@@ -3,8 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { createApp, siteFromHost, siteUrl } from '../src/app';
 import { isValidSiteName, listDeploys } from '../src/sites';
 import { buildCloudflarePlatform } from '../src/platform/cloudflare/platform';
+import { runUploadLimitParity } from './parity/suite';
 
 const HOST = 'http://localhost';
+
+runUploadLimitParity((path, body) => SELF.fetch(`${HOST}${path}`, { method: 'POST', body }));
 
 /** Members get plugin widget tags injected into every served HTML page (even
  *  body-less fragments, where they're appended). Strip them so the serving
@@ -355,14 +358,6 @@ describe('deploy and serve', () => {
       });
       expect(res.status).toBe(400);
     }
-  });
-
-  it('rejects a deploy over the 10 MB site cap', async () => {
-    const res = await SELF.fetch(`${HOST}/api/deploy/toobig`, {
-      method: 'POST',
-      body: deployForm({ 'index.html': 'x'.repeat(11 * 1024 * 1024) }),
-    });
-    expect(res.status).toBe(413);
   });
 
   it('lists, exposes raw files, and deletes sites', async () => {
