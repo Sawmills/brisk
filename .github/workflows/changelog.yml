@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   require-entry:
-    runs-on: namespace-profile-sawmills-runner
+    runs-on: "${{ vars.RUNNER_PROVIDER == 'runson' && format('runs-on={0}/cpu=4/ram=8/family=c8a.xlarge/image=ubuntu24-full-x64/spot=false/retry=false/ssh=false', github.run_id) || 'namespace-profile-sawmills-runner' }}"
     steps:
       - uses: actions/checkout@v6
         with:
