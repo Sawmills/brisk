@@ -7,10 +7,16 @@ on:
 
 jobs:
   checks:
-    runs-on: namespace-profile-sawmills-runner
+    runs-on: "${{ vars.RUNNER_PROVIDER == 'runson' && format('runs-on={0}/cpu=4/ram=8/family=c8a.xlarge/image=ubuntu24-full-x64/spot=false/retry=false/ssh=false/extras=s3-cache', github.run_id) || 'namespace-profile-sawmills-runner' }}"
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v6
+      - name: Enable RunsOn cache and artifacts
+        if: "${{ vars.RUNNER_PROVIDER == 'runson' }}"
+        uses: runs-on/action@284bff869d4a825f778ac7c38e50f1e31ef198fd
+        with:
+          show_env: false
+
       - uses: actions/setup-node@v6
         with:
           node-version: 22
