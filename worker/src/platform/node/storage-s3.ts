@@ -68,7 +68,9 @@ export function createS3Storage(cfg: S3Config): Storage {
       return {
         body: res.body!,
         contentType: res.headers.get('content-type') ?? undefined,
-        etag: (res.headers.get('etag') ?? '').replace(/"/g, ''),
+        // Keep the quoted entity-tag form (`"abc"`): it's served as-is in the
+        // etag header, and compression prefixes it with W/ (W/"abc").
+        etag: quotedTag(res.headers.get('etag') ?? ''),
         size: Number(res.headers.get('content-length') ?? 0),
       };
     },
@@ -117,4 +119,10 @@ export function createS3Storage(cfg: S3Config): Storage {
       if (!res.ok) throw new Error(`S3 delete batch: ${res.status}`);
     },
   };
+}
+
+/** S3 sends `"abc"`; some S3-compatible servers drop the quotes. Always return the quoted form. */
+function quotedTag(tag: string): string {
+  const bare = tag.trim().replace(/^W\//, '').replace(/"/g, '');
+  return bare ? `"${bare}"` : '';
 }

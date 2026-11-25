@@ -216,6 +216,60 @@ describe('deploy and serve', () => {
     expect(await stale.text()).toBe(`window.X = "${big}";`);
   });
 
+  it('sets Vary: Accept-Encoding on compressed, plain and 304 site responses', async () => {
+    const big = 'y'.repeat(20_000);
+    await SELF.fetch(`${HOST}/api/deploy/varied`, {
+      method: 'POST',
+      body: deployForm({ 'index.html': '<h1>hi</h1>', 'data.js': `window.Y = "${big}";` }),
+    });
+    const get = (headers: Record<string, string> = {}) =>
+      app.fetch(
+        new Request('http://varied.localhost/data.js', { headers }),
+        env,
+        createExecutionContext(),
+      );
+
+    const gz = await get({ 'accept-encoding': 'gzip' });
+    expect(gz.headers.get('content-encoding')).toBe('gzip');
+    expect(gz.headers.get('vary')).toMatch(/accept-encoding/i);
+    await gz.arrayBuffer();
+
+    const plain = await get({ 'accept-encoding': 'identity' });
+    expect(plain.headers.get('content-encoding')).toBeNull();
+    expect(plain.headers.get('vary')).toMatch(/accept-encoding/i);
+    const etag = plain.headers.get('etag')!;
+    await plain.arrayBuffer();
+
+    const cached = await get({ 'if-none-match': etag });
+    expect(cached.status).toBe(304);
+    expect(cached.headers.get('vary')).toMatch(/accept-encoding/i);
+  });
+
+  it('parses If-None-Match lists and wildcards strictly', async () => {
+    await SELF.fetch(`${HOST}/api/deploy/tags`, {
+      method: 'POST',
+      body: deployForm({ 'index.html': '<h1>hi</h1>', 'data.js': 'window.Z = 1;' }),
+    });
+    const get = (inm: string) =>
+      app.fetch(
+        new Request('http://tags.localhost/data.js', { headers: { 'if-none-match': inm } }),
+        env,
+        createExecutionContext(),
+      );
+    const etag = (
+      await app.fetch(new Request('http://tags.localhost/data.js'), env, createExecutionContext())
+    ).headers.get('etag')!;
+
+    expect((await get('*')).status).toBe(304);
+    // a quoted "*" is an ordinary tag, not the wildcard
+    expect((await get('"*"')).status).toBe(200);
+    expect((await get(`"nope", ${etag}`)).status).toBe(304);
+    expect((await get(`W/${etag}`)).status).toBe(304);
+    // a comma inside a quoted tag must not split it into a matching fragment
+    const bare = etag.replace(/"/g, '');
+    expect((await get(`"x,${bare}"`)).status).toBe(200);
+  });
+
   it('does not 304 or compress the API', async () => {
     const res = await app.fetch(
       new Request(`${HOST}/api/me`, {

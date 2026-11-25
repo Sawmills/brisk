@@ -191,7 +191,10 @@ export function createApp(
       if (path.startsWith('/api/') || path.startsWith('/auth/')) return next();
       return mw(c, next);
     };
+  // Order matters: notModified wraps varyEncoding, which wraps compress, so the
+  // Vary header is on the response (and copied onto a 304) whatever encoding won.
   app.use('*', staticOnly(notModified));
+  app.use('*', staticOnly(varyEncoding));
   app.use('*', staticOnly(compress()));
 
   // ---- identity ----------------------------------------------------------
@@ -574,6 +577,35 @@ function escapeHtml(s: string): string {
 const opaqueTag = (t: string): string => t.trim().replace(/^W\//, '').replace(/^"|"$/g, '');
 
 /**
+ * The entity-tags in an If-None-Match list. A quoted tag may contain commas, so
+ * split on quoted tokens rather than on every comma.
+ */
+const listedTags = (header: string): string[] =>
+  header.match(/(?:W\/)?"[^"]*"|[^\s,]+/g)?.map(opaqueTag) ?? [];
+
+/**
+ * Site responses vary by Accept-Encoding once compression can pick gzip, so a
+ * shared cache must not hand a gzip body to a client that asked for identity.
+ * Set on every 200, compressed or not, and kept on 304 by notModified.
+ */
+const varyEncoding: MiddlewareHandler<AppEnv> = async (c, next) => {
+  await next();
+  if (c.res.status !== 200) return;
+  const vary = c.res.headers.get('vary');
+  if (vary && /(^|,)\s*(\*|accept-encoding)\s*(,|$)/i.test(vary)) return;
+  const value = vary ? `${vary}, Accept-Encoding` : 'Accept-Encoding';
+  try {
+    c.res.headers.set('vary', value);
+  } catch {
+    // Some responses (e.g. fetched assets) have immutable headers: re-wrap.
+    const res = new Response(c.res.body, c.res);
+    res.headers.set('vary', value);
+    c.res = undefined;
+    c.res = res;
+  }
+};
+
+/**
  * Turn a 200 GET into a body-less 304 when the request's If-None-Match names
  * the response's etag. Compared weakly: a compressed and a plain copy of the
  * same file share one etag.
@@ -585,7 +617,8 @@ const notModified: MiddlewareHandler<AppEnv> = async (c, next) => {
   const inm = c.req.header('if-none-match');
   if (!etag || !inm) return;
   const want = opaqueTag(etag);
-  if (!inm.split(',').some((t) => opaqueTag(t) === '*' || opaqueTag(t) === want)) return;
+  // `*` matches only as the whole header; a quoted "*" is an ordinary tag.
+  if (inm.trim() !== '*' && !listedTags(inm).includes(want)) return;
   const headers = new Headers();
   for (const k of [
     'etag',
