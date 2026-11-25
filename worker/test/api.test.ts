@@ -216,6 +216,10 @@ describe('deploy and serve', () => {
     expect(await stale.text()).toBe(`window.X = "${big}";`);
   });
 
+  /** The Vary header as lowercase tokens, so the check is for the exact field name. */
+  const varyTokens = (res: Response) =>
+    (res.headers.get('vary') ?? '').split(',').map((t) => t.trim().toLowerCase());
+
   it('sets Vary: Accept-Encoding on compressed, plain and 304 site responses', async () => {
     const big = 'y'.repeat(20_000);
     await SELF.fetch(`${HOST}/api/deploy/varied`, {
@@ -231,18 +235,18 @@ describe('deploy and serve', () => {
 
     const gz = await get({ 'accept-encoding': 'gzip' });
     expect(gz.headers.get('content-encoding')).toBe('gzip');
-    expect(gz.headers.get('vary')).toMatch(/accept-encoding/i);
+    expect(varyTokens(gz)).toContain('accept-encoding');
     await gz.arrayBuffer();
 
     const plain = await get({ 'accept-encoding': 'identity' });
     expect(plain.headers.get('content-encoding')).toBeNull();
-    expect(plain.headers.get('vary')).toMatch(/accept-encoding/i);
+    expect(varyTokens(plain)).toContain('accept-encoding');
     const etag = plain.headers.get('etag')!;
     await plain.arrayBuffer();
 
     const cached = await get({ 'if-none-match': etag });
     expect(cached.status).toBe(304);
-    expect(cached.headers.get('vary')).toMatch(/accept-encoding/i);
+    expect(varyTokens(cached)).toContain('accept-encoding');
   });
 
   it('parses If-None-Match lists and wildcards strictly', async () => {
