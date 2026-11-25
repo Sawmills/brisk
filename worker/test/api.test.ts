@@ -182,6 +182,52 @@ describe('deploy and serve', () => {
     expect(stripWidgets(await about.text())).toBe('<h1>about</h1>');
   });
 
+  it('answers a matching If-None-Match with 304 and compresses site files', async () => {
+    const big = 'x'.repeat(20_000);
+    await SELF.fetch(`${HOST}/api/deploy/cached`, {
+      method: 'POST',
+      body: deployForm({ 'index.html': '<h1>hi</h1>', 'data.js': `window.X = "${big}";` }),
+    });
+    // HTML pages get widgets injected and lose their etag, so check a data file.
+    const get = (headers: Record<string, string> = {}) =>
+      app.fetch(
+        new Request('http://cached.localhost/data.js', { headers }),
+        env,
+        createExecutionContext(),
+      );
+
+    const first = await get({ 'accept-encoding': 'gzip' });
+    expect(first.status).toBe(200);
+    expect(first.headers.get('content-encoding')).toBe('gzip');
+    const compressed = await first.arrayBuffer();
+    expect(compressed.byteLength).toBeLessThan(2_000);
+    const etag = first.headers.get('etag');
+    expect(etag).toBeTruthy();
+
+    const again = await get({ 'if-none-match': etag! });
+    expect(again.status).toBe(304);
+    expect(await again.text()).toBe('');
+    // compression marks the tag weak (W/); it names the same file either way
+    expect(again.headers.get('etag')?.replace(/^W\//, '')).toBe(etag!.replace(/^W\//, ''));
+
+    // a different tag, or no tag, still gets the full page
+    const stale = await get({ 'if-none-match': '"other"' });
+    expect(stale.status).toBe(200);
+    expect(await stale.text()).toBe(`window.X = "${big}";`);
+  });
+
+  it('does not 304 or compress the API', async () => {
+    const res = await app.fetch(
+      new Request(`${HOST}/api/me`, {
+        headers: { 'accept-encoding': 'gzip', 'if-none-match': '*' },
+      }),
+      env,
+      createExecutionContext(),
+    );
+    expect(res.status).not.toBe(304);
+    expect(res.headers.get('content-encoding')).toBeNull();
+  });
+
   it('serves a lone html page at the root and under its own name', async () => {
     await SELF.fetch(`${HOST}/api/deploy/findings`, {
       method: 'POST',

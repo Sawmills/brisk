@@ -1,4 +1,5 @@
 import { Hono, type Context, type Handler, type MiddlewareHandler } from 'hono';
+import { compress } from 'hono/compress';
 import { AiNotConfiguredError, chat } from './ai';
 import {
   auth,
@@ -177,6 +178,21 @@ export function createApp(
   app.use('/auth/*', denyFrameNoSniff);
 
   app.use('*', auth());
+
+  // Static pages: answer a matching If-None-Match with 304, and compress the
+  // rest. Sites are re-validated on every load (cache-control: no-cache), so
+  // without the 304 every visit re-downloads every file; nothing in front of
+  // the Node server compresses either. The API, auth and websocket routes are
+  // left alone.
+  const staticOnly =
+    (mw: MiddlewareHandler<AppEnv>): MiddlewareHandler<AppEnv> =>
+    async (c, next) => {
+      const path = new URL(c.req.url).pathname;
+      if (path.startsWith('/api/') || path.startsWith('/auth/')) return next();
+      return mw(c, next);
+    };
+  app.use('*', staticOnly(notModified));
+  app.use('*', staticOnly(compress()));
 
   // ---- identity ----------------------------------------------------------
 
@@ -553,3 +569,36 @@ function notFoundPage(site: string, path: string, exists: boolean, root: string)
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 }
+
+/** Strip quotes and the weak prefix, so `W/"a"`, `"a"` and `a` all compare equal. */
+const opaqueTag = (t: string): string => t.trim().replace(/^W\//, '').replace(/^"|"$/g, '');
+
+/**
+ * Turn a 200 GET into a body-less 304 when the request's If-None-Match names
+ * the response's etag. Compared weakly: a compressed and a plain copy of the
+ * same file share one etag.
+ */
+const notModified: MiddlewareHandler<AppEnv> = async (c, next) => {
+  await next();
+  if ((c.req.method !== 'GET' && c.req.method !== 'HEAD') || c.res.status !== 200) return;
+  const etag = c.res.headers.get('etag');
+  const inm = c.req.header('if-none-match');
+  if (!etag || !inm) return;
+  const want = opaqueTag(etag);
+  if (!inm.split(',').some((t) => opaqueTag(t) === '*' || opaqueTag(t) === want)) return;
+  const headers = new Headers();
+  for (const k of [
+    'etag',
+    'cache-control',
+    'vary',
+    'last-modified',
+    'content-location',
+    'expires',
+  ]) {
+    const v = c.res.headers.get(k);
+    if (v) headers.set(k, v);
+  }
+  await c.res.body?.cancel();
+  c.res = undefined;
+  c.res = new Response(null, { status: 304, headers });
+};

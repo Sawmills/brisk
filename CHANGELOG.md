@@ -10,6 +10,10 @@ releases are published to
 
 ### Changed
 
+- Compress site files (gzip) and answer a matching `If-None-Match` with
+  `304 Not Modified`. Nothing in front of the Node server compressed, and sites
+  are served with `cache-control: no-cache`, so every visit re-downloaded every
+  file in full. API and auth routes are unchanged.
 - Raise the site deployment and file-upload limit from 10 MB to 50 MB, matching
   the dashboard's existing site-size limit.
 
