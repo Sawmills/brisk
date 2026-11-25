@@ -64,3 +64,37 @@ describe('createS3Storage delete() wiring', () => {
     expect(req.headers.get('authorization')).toMatch(/SignedHeaders=[^,]*content-md5/);
   });
 });
+
+describe('createS3Storage get() etag', () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  const storageWithEtag = (etag: string | null) => {
+    globalThis.fetch = (async () =>
+      new Response('body', {
+        status: 200,
+        headers: etag === null ? {} : { etag },
+      })) as typeof fetch;
+    return createS3Storage({
+      endpoint: 'https://s3.us-east-1.amazonaws.com',
+      bucket: 'brisk-objects',
+      accessKeyId: 'AKIATEST',
+      secretAccessKey: 'secret',
+      region: 'us-east-1',
+    });
+  };
+
+  // Served as-is in the etag header, and compression prefixes it with W/, so it
+  // must stay a quoted entity-tag (W/"abc", never W/abc).
+  it('keeps the quotes S3 sends', async () => {
+    expect((await storageWithEtag('"abc123"').get('k'))?.etag).toBe('"abc123"');
+  });
+  it('adds quotes when an S3-compatible server drops them', async () => {
+    expect((await storageWithEtag('abc123').get('k'))?.etag).toBe('"abc123"');
+  });
+  it('leaves a missing etag empty', async () => {
+    expect((await storageWithEtag(null).get('k'))?.etag).toBe('');
+  });
+});
