@@ -586,11 +586,11 @@ const listedTags = (header: string): string[] =>
 /**
  * Site responses vary by Accept-Encoding once compression can pick gzip, so a
  * shared cache must not hand a gzip body to a client that asked for identity.
- * Set on every 200, compressed or not, and kept on 304 by notModified.
+ * Set on every static response the compressor could transform (any status,
+ * including 404 pages), compressed or not, and kept on 304 by notModified.
  */
 const varyEncoding: MiddlewareHandler<AppEnv> = async (c, next) => {
   await next();
-  if (c.res.status !== 200) return;
   const vary = c.res.headers.get('vary');
   if (vary && /(^|,)\s*(\*|accept-encoding)\s*(,|$)/i.test(vary)) return;
   const value = vary ? `${vary}, Accept-Encoding` : 'Accept-Encoding';

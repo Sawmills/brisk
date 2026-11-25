@@ -247,6 +247,15 @@ describe('deploy and serve', () => {
     const cached = await get({ 'if-none-match': etag });
     expect(cached.status).toBe(304);
     expect(varyTokens(cached)).toContain('accept-encoding');
+
+    // a 404 page is compressible too, so it varies the same way
+    const missing = await app.fetch(
+      new Request('http://varied.localhost/nope.html', { headers: { 'accept-encoding': 'gzip' } }),
+      env,
+      createExecutionContext(),
+    );
+    expect(missing.status).toBe(404);
+    expect(varyTokens(missing)).toContain('accept-encoding');
   });
 
   it('parses If-None-Match lists and wildcards strictly', async () => {
